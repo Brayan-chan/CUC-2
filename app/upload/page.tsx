@@ -1,9 +1,6 @@
 "use client"
 
-import type React from "react"
-import { Eye } from "lucide-react" // Import the Eye component
-
-import { useState, useCallback } from "react"
+import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -12,35 +9,33 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Upload,
-  ImageIcon,
-  Video,
-  FileText,
-  X,
   Calendar,
   Tag,
   ArrowLeft,
   Check,
   AlertCircle,
   Plus,
-  Trash2,
+  X,
   Sparkles,
-  Star,
   Zap,
   Award,
-  Clock,
   MapPin,
   Users,
+  Eye,
 } from "lucide-react"
 import Link from "next/link"
+import { useAuth } from "@/hooks/useAuth"
+import { useRouter } from "next/navigation"
+import { CloudinaryUploadWidget } from "@/components/CloudinaryUploadWidget"
+import type { CloudinaryUploadResult } from "@/lib/cloudinary"
+import { createEvent, type EventData } from "@/lib/firestore"
+import { toast } from "sonner"
 
 export default function UploadPage() {
-  const [dragActive, setDragActive] = useState(false)
-  const [files, setFiles] = useState<File[]>([])
-  const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({})
+  const [uploadedFiles, setUploadedFiles] = useState<CloudinaryUploadResult[]>([])
   const [eventData, setEventData] = useState({
     title: "",
     description: "",
@@ -51,6 +46,16 @@ export default function UploadPage() {
     tags: [] as string[],
     newTag: "",
   })
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const { user, userData } = useAuth()
+  const router = useRouter()
+
+  useEffect(() => {
+    if (!user) {
+      router.push("/login")
+    }
+  }, [user, router])
 
   const eventTypes = [
     { value: "musica", label: "Música", gradient: "from-blue-500 to-cyan-500" },
@@ -64,58 +69,6 @@ export default function UploadPage() {
     { value: "deportivo", label: "Deportivo", gradient: "from-yellow-500 to-orange-500" },
     { value: "otro", label: "Otro", gradient: "from-gray-400 to-gray-600" },
   ]
-
-  const handleDrag = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setDragActive(true)
-    } else if (e.type === "dragleave") {
-      setDragActive(false)
-    }
-  }, [])
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setDragActive(false)
-
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      const newFiles = Array.from(e.dataTransfer.files)
-      setFiles((prev) => [...prev, ...newFiles])
-
-      newFiles.forEach((file) => {
-        simulateUpload(file.name)
-      })
-    }
-  }, [])
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const newFiles = Array.from(e.target.files)
-      setFiles((prev) => [...prev, ...newFiles])
-
-      newFiles.forEach((file) => {
-        simulateUpload(file.name)
-      })
-    }
-  }
-
-  const simulateUpload = (fileName: string) => {
-    let progress = 0
-    const interval = setInterval(() => {
-      progress += Math.random() * 15
-      if (progress >= 100) {
-        progress = 100
-        clearInterval(interval)
-      }
-      setUploadProgress((prev) => ({ ...prev, [fileName]: progress }))
-    }, 200)
-  }
-
-  const removeFile = (index: number) => {
-    setFiles((prev) => prev.filter((_, i) => i !== index))
-  }
 
   const addTag = () => {
     if (eventData.newTag.trim() && !eventData.tags.includes(eventData.newTag.trim())) {
@@ -134,21 +87,111 @@ export default function UploadPage() {
     }))
   }
 
-  const getFileIcon = (file: File) => {
-    if (file.type.startsWith("image/")) return <ImageIcon className="w-5 h-5" />
-    if (file.type.startsWith("video/")) return <Video className="w-5 h-5" />
-    return <FileText className="w-5 h-5" />
+  const handleFilesUploaded = (files: CloudinaryUploadResult[]) => {
+    setUploadedFiles(files)
   }
 
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return "0 Bytes"
-    const k = 1024
-    const sizes = ["Bytes", "KB", "MB", "GB"]
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return Number.parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i]
+  const handleSubmit = async () => {
+    if (
+      !user ||
+      !eventData.title ||
+      !eventData.description ||
+      !eventData.date ||
+      !eventData.location ||
+      !eventData.type
+    ) {
+      toast.error("Por favor completa todos los campos obligatorios")
+      return
+    }
+
+    setIsSubmitting(true)
+
+    try {
+      // Organize files by type
+      const images = uploadedFiles
+        .filter((file) => file.resource_type === "image")
+        .map((file) => ({
+          url: file.secure_url,
+          publicId: file.public_id,
+          format: file.format,
+        }))
+
+      const videos = uploadedFiles
+        .filter((file) => file.resource_type === "video")
+        .map((file) => ({
+          url: file.secure_url,
+          publicId: file.public_id,
+          format: file.format,
+          duration: file.duration,
+        }))
+
+      const documents = uploadedFiles
+        .filter((file) => file.resource_type === "raw")
+        .map((file) => ({
+          url: file.secure_url,
+          publicId: file.public_id,
+          format: file.format,
+          name: file.public_id.split("/").pop() || "documento",
+        }))
+
+      // Get gradient for the event type
+      const selectedType = eventTypes.find((type) => type.value === eventData.type)
+      const gradient = selectedType?.gradient || "from-gray-400 to-gray-600"
+
+      // Create event data
+      const newEventData: Omit<EventData, "id" | "createdAt" | "updatedAt"> = {
+        title: eventData.title,
+        description: eventData.description,
+        date: eventData.date,
+        location: eventData.location,
+        type: selectedType?.label || eventData.type,
+        participants: Number.parseInt(eventData.participants) || 0,
+        tags: eventData.tags,
+        images,
+        videos,
+        documents,
+        createdBy: user.uid,
+        status: userData?.role === "admin" ? "approved" : "pending",
+        featured: false,
+        views: 0,
+        likes: 0,
+        year: new Date(eventData.date).getFullYear().toString(),
+        gradient,
+      }
+
+      // Create event in Firestore
+      const eventId = await createEvent(newEventData)
+
+      toast.success("¡Evento creado exitosamente!")
+
+      // Reset form
+      setEventData({
+        title: "",
+        description: "",
+        date: "",
+        location: "",
+        type: "",
+        participants: "",
+        tags: [],
+        newTag: "",
+      })
+      setUploadedFiles([])
+
+      // Redirect to dashboard
+      router.push("/dashboard")
+    } catch (error: any) {
+      console.error("Error creating event:", error)
+      toast.error("Error al crear el evento: " + error.message)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const selectedEventType = eventTypes.find((type) => type.value === eventData.type)
+
+  if (!user) {
+    return null // Will redirect to login
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
@@ -226,105 +269,22 @@ export default function UploadPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {/* Modern Drop Zone */}
-                  <div
-                    className={`relative border-2 border-dashed rounded-2xl p-16 text-center transition-all duration-300 group ${
-                      dragActive
-                        ? "border-purple-400 bg-purple-50"
-                        : "border-gray-300 hover:border-purple-300 hover:bg-purple-50/50"
-                    }`}
-                    onDragEnter={handleDrag}
-                    onDragLeave={handleDrag}
-                    onDragOver={handleDrag}
-                    onDrop={handleDrop}
-                  >
-                    <input
-                      type="file"
-                      multiple
-                      accept="image/*,video/*,.pdf,.doc,.docx"
-                      onChange={handleFileSelect}
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    />
-                    <div className="w-20 h-20 bg-gradient-to-r from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform duration-300 shadow-lg">
-                      <Upload className="w-10 h-10 text-white" />
-                    </div>
-                    <h3 className="text-2xl font-bold text-gray-900 mb-3">
-                      Arrastra archivos aquí o haz clic para seleccionar
-                    </h3>
-                    <p className="text-gray-600 mb-8 text-lg">
-                      Máximo 100MB por archivo. Formatos: JPG, PNG, MP4, MOV, PDF, DOC
-                    </p>
-                    <Button className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-lg text-lg px-8 py-3">
-                      Seleccionar Archivos
-                    </Button>
-                  </div>
-
-                  {/* Modern File List */}
-                  {files.length > 0 && (
-                    <div className="mt-8 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <h4 className="text-xl font-bold text-gray-900 flex items-center">
-                          <Star className="w-5 h-5 mr-2 text-yellow-500" />
-                          Archivos Seleccionados ({files.length})
-                        </h4>
-                        <Badge className="bg-gradient-to-r from-green-100 to-emerald-100 text-green-700 border-green-200 px-3 py-1">
-                          <Check className="w-4 h-4 mr-2" />
-                          Listos para subir
-                        </Badge>
+                  <CloudinaryUploadWidget onUpload={handleFilesUploaded} multiple={true} maxFiles={20}>
+                    <div className="border-2 border-dashed border-purple-300 rounded-2xl p-16 text-center hover:border-purple-400 hover:bg-purple-50/50 transition-all duration-300 group cursor-pointer">
+                      <div className="w-20 h-20 bg-gradient-to-r from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform duration-300 shadow-lg">
+                        <Upload className="w-10 h-10 text-white" />
                       </div>
-                      {files.map((file, index) => (
-                        <motion.div
-                          key={index}
-                          initial={{ opacity: 0, y: 20 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: index * 0.1 }}
-                          className="group"
-                        >
-                          <div className="flex items-center justify-between p-4 rounded-2xl bg-gradient-to-r from-gray-50 to-white hover:from-purple-50 hover:to-pink-50 transition-all duration-300 border border-gray-100 hover:border-purple-200 shadow-sm">
-                            <div className="flex items-center space-x-3">
-                              <div className="text-purple-600 p-2 bg-purple-100 rounded-xl">{getFileIcon(file)}</div>
-                              <div>
-                                <p className="font-semibold text-gray-900 group-hover:text-purple-600 transition-colors">
-                                  {file.name}
-                                </p>
-                                <p className="text-sm text-gray-600">{formatFileSize(file.size)}</p>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center space-x-3">
-                              {uploadProgress[file.name] !== undefined && (
-                                <div className="flex items-center space-x-2">
-                                  {uploadProgress[file.name] === 100 ? (
-                                    <div className="flex items-center space-x-2 text-green-600">
-                                      <Check className="w-4 h-4" />
-                                      <span className="text-sm font-medium">Completado</span>
-                                    </div>
-                                  ) : (
-                                    <div className="flex items-center space-x-2">
-                                      <div className="w-24">
-                                        <Progress value={uploadProgress[file.name]} className="h-2" />
-                                      </div>
-                                      <span className="text-sm text-gray-600 font-medium">
-                                        {Math.round(uploadProgress[file.name] || 0)}%
-                                      </span>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => removeFile(index)}
-                                className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          </div>
-                        </motion.div>
-                      ))}
+                      <h3 className="text-2xl font-bold text-gray-900 mb-3">
+                        Arrastra archivos aquí o haz clic para seleccionar
+                      </h3>
+                      <p className="text-gray-600 mb-8 text-lg">
+                        Máximo 100MB por archivo. Formatos: JPG, PNG, MP4, MOV, PDF, DOC
+                      </p>
+                      <div className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-lg text-lg px-8 py-3 rounded-xl inline-block">
+                        Seleccionar Archivos
+                      </div>
                     </div>
-                  )}
+                  </CloudinaryUploadWidget>
                 </CardContent>
               </Card>
             </TabsContent>
@@ -577,20 +537,30 @@ export default function UploadPage() {
                         <h3 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent mb-1">
                           ¿Listo para publicar?
                         </h3>
-                        <p className="text-gray-600 text-lg">Tu evento será revisado antes de aparecer públicamente</p>
+                        <p className="text-gray-600 text-lg">
+                          {userData?.role === "admin"
+                            ? "Tu evento será publicado inmediatamente"
+                            : "Tu evento será revisado antes de aparecer públicamente"}
+                        </p>
                       </div>
                     </div>
                     <div className="flex flex-col space-y-3">
                       <Button
-                        variant="outline"
-                        className="border-purple-200 text-purple-600 hover:bg-purple-50 bg-transparent px-6 py-3"
+                        onClick={handleSubmit}
+                        disabled={isSubmitting || !eventData.title || !eventData.description}
+                        className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-lg px-6 py-3"
                       >
-                        <Clock className="w-4 h-4 mr-2" />
-                        Guardar Borrador
-                      </Button>
-                      <Button className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-lg px-6 py-3">
-                        <Check className="w-4 h-4 mr-2" />
-                        Enviar para Revisión
+                        {isSubmitting ? (
+                          <div className="flex items-center">
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                            Creando evento...
+                          </div>
+                        ) : (
+                          <>
+                            <Check className="w-4 h-4 mr-2" />
+                            {userData?.role === "admin" ? "Publicar Evento" : "Enviar para Revisión"}
+                          </>
+                        )}
                       </Button>
                     </div>
                   </div>

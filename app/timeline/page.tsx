@@ -26,108 +26,19 @@ import {
   Zap,
 } from "lucide-react"
 import Link from "next/link"
+import { useTimelineEvents } from "@/hooks/useEvents"
+import { incrementEventViews, incrementEventLikes } from "@/lib/firestore"
 
 export default function TimelinePage() {
-  const [selectedYear, setSelectedYear] = useState("2024")
+  const [selectedYear, setSelectedYear] = useState("all")
   const [selectedType, setSelectedType] = useState("all")
   const [searchTerm, setSearchTerm] = useState("")
   const containerRef = useRef<HTMLDivElement>(null)
   const { scrollYProgress } = useScroll({ container: containerRef })
 
-  const events = [
-    {
-      id: 1,
-      year: "2024",
-      date: "15 de Marzo",
-      title: "Festival Internacional de Danza Contemporánea",
-      type: "Danza",
-      description:
-        "Encuentro internacional que reúne a los mejores exponentes de la danza contemporánea, con talleres, presentaciones y intercambio cultural entre artistas de diferentes países.",
-      location: "Teatro Principal UACAM",
-      participants: 120,
-      images: 45,
-      videos: 8,
-      views: 2847,
-      likes: 456,
-      image: "/placeholder.svg?height=300&width=400&text=Festival+Danza",
-      gradient: "from-pink-500 via-purple-500 to-indigo-500",
-      featured: true,
-    },
-    {
-      id: 2,
-      year: "2024",
-      date: "22 de Abril",
-      title: "Bienal de Arte Digital y Nuevas Tecnologías",
-      type: "Arte Visual",
-      description:
-        "Exposición bienal que explora la intersección entre arte y tecnología, presentando obras de realidad virtual, arte generativo e instalaciones interactivas.",
-      location: "Galería Universitaria",
-      participants: 85,
-      images: 67,
-      videos: 12,
-      views: 1923,
-      likes: 342,
-      image: "/placeholder.svg?height=300&width=400&text=Arte+Digital",
-      gradient: "from-cyan-500 via-blue-500 to-purple-500",
-      featured: true,
-    },
-    {
-      id: 3,
-      year: "2024",
-      date: "8 de Mayo",
-      title: "Concierto Sinfónico Universitario",
-      type: "Música",
-      description:
-        "Presentación de la Orquesta Sinfónica UACAM con un repertorio que combina clásicos universales y composiciones contemporáneas de artistas locales.",
-      location: "Auditorio Central",
-      participants: 65,
-      images: 32,
-      videos: 5,
-      views: 3156,
-      likes: 578,
-      image: "/placeholder.svg?height=300&width=400&text=Concierto+Sinfonico",
-      gradient: "from-amber-500 via-orange-500 to-red-500",
-      featured: false,
-    },
-    {
-      id: 4,
-      year: "2023",
-      date: "12 de Diciembre",
-      title: "Posada Navideña Universitaria",
-      type: "Tradición",
-      description:
-        "Celebración tradicional que une a toda la comunidad universitaria con villancicos, pastorelas, gastronomía típica campechana y actividades culturales familiares.",
-      location: "Plaza Central UACAM",
-      participants: 200,
-      images: 89,
-      videos: 6,
-      views: 4521,
-      likes: 723,
-      image: "/placeholder.svg?height=300&width=400&text=Posada+Navideña",
-      gradient: "from-red-500 via-green-500 to-red-600",
-      featured: false,
-    },
-    {
-      id: 5,
-      year: "2023",
-      date: "25 de Octubre",
-      title: "Día de Muertos - Altar Monumental",
-      type: "Tradición",
-      description:
-        "Construcción del altar de muertos más grande de la universidad con participación interdisciplinaria, elementos culturales regionales y homenaje a personalidades destacadas.",
-      location: "Explanada Principal",
-      participants: 150,
-      images: 156,
-      videos: 10,
-      views: 5234,
-      likes: 892,
-      image: "/placeholder.svg?height=300&width=400&text=Dia+Muertos",
-      gradient: "from-orange-500 via-yellow-500 to-red-500",
-      featured: true,
-    },
-  ]
+  const { timelineEvents, loading } = useTimelineEvents()
 
-  const filteredEvents = events.filter((event) => {
+  const filteredEvents = timelineEvents.filter((event) => {
     const matchesYear = selectedYear === "all" || event.year === selectedYear
     const matchesType = selectedType === "all" || event.type === selectedType
     const matchesSearch =
@@ -138,11 +49,37 @@ export default function TimelinePage() {
 
   const years = [
     "all",
-    ...Array.from(new Set(events.map((e) => e.year)))
+    ...Array.from(new Set(timelineEvents.map((e) => e.year)))
       .sort()
       .reverse(),
   ]
-  const types = ["all", ...Array.from(new Set(events.map((e) => e.type)))]
+  const types = ["all", ...Array.from(new Set(timelineEvents.map((e) => e.type)))]
+
+  const handleViewEvent = async (eventId: string) => {
+    if (eventId) {
+      await incrementEventViews(eventId)
+    }
+  }
+
+  const handleLikeEvent = async (eventId: string) => {
+    if (eventId) {
+      await incrementEventLikes(eventId)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+            <Clock className="w-8 h-8 text-white animate-spin" />
+          </div>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Cargando Cronología</h2>
+          <p className="text-gray-600">Obteniendo eventos históricos...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
@@ -264,12 +201,20 @@ export default function TimelinePage() {
                       <div className="grid lg:grid-cols-2 gap-0">
                         {/* Image Section */}
                         <div className="relative aspect-[4/3] lg:aspect-auto overflow-hidden">
-                          <img
-                            src={event.image || "/placeholder.svg"}
-                            alt={event.title}
-                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                          {event.images && event.images.length > 0 ? (
+                            <img
+                              src={event.images[0].url || "/placeholder.svg"}
+                              alt={event.title}
+                              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                            />
+                          ) : (
+                            <div className="w-full h-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+                              <ImageIcon className="w-16 h-16 text-gray-400" />
+                            </div>
+                          )}
+                          <div
+                            className={`absolute inset-0 bg-gradient-to-r ${event.gradient || "from-purple-500 to-pink-500"} opacity-60`}
                           />
-                          <div className={`absolute inset-0 bg-gradient-to-r ${event.gradient} opacity-60`} />
 
                           {/* Year Badge */}
                           <div className="absolute top-4 left-4">
@@ -292,20 +237,26 @@ export default function TimelinePage() {
                           <div className="absolute bottom-4 left-4 flex space-x-2">
                             <div className="bg-black/70 backdrop-blur-sm rounded-full px-3 py-1 flex items-center space-x-1">
                               <Eye className="w-3 h-3 text-white" />
-                              <span className="text-xs font-medium text-white">{event.views}</span>
+                              <span className="text-xs font-medium text-white">{event.views || 0}</span>
                             </div>
                             <div className="bg-black/70 backdrop-blur-sm rounded-full px-3 py-1 flex items-center space-x-1">
                               <Heart className="w-3 h-3 text-red-400" />
-                              <span className="text-xs font-medium text-white">{event.likes}</span>
+                              <span className="text-xs font-medium text-white">{event.likes || 0}</span>
                             </div>
                           </div>
 
                           {/* Action Buttons */}
                           <div className="absolute bottom-4 right-4 flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                            <Button size="sm" className="bg-white/90 text-gray-900 hover:bg-white shadow-lg">
-                              <Play className="w-4 h-4" />
-                            </Button>
-                            <Button size="sm" className="bg-white/90 text-gray-900 hover:bg-white shadow-lg">
+                            {event.videos && event.videos.length > 0 && (
+                              <Button size="sm" className="bg-white/90 text-gray-900 hover:bg-white shadow-lg">
+                                <Play className="w-4 h-4" />
+                              </Button>
+                            )}
+                            <Button
+                              size="sm"
+                              className="bg-white/90 text-gray-900 hover:bg-white shadow-lg"
+                              onClick={() => handleViewEvent(event.id!)}
+                            >
                               <Maximize2 className="w-4 h-4" />
                             </Button>
                           </div>
@@ -317,11 +268,17 @@ export default function TimelinePage() {
                             <div className="flex items-center justify-between">
                               <Badge
                                 variant="outline"
-                                className={`bg-gradient-to-r ${event.gradient} text-white border-none font-medium px-4 py-2`}
+                                className={`bg-gradient-to-r ${event.gradient || "from-purple-500 to-pink-500"} text-white border-none font-medium px-4 py-2`}
                               >
                                 {event.type}
                               </Badge>
-                              <span className="text-gray-500 font-medium">{event.date}</span>
+                              <span className="text-gray-500 font-medium">
+                                {new Date(event.date).toLocaleDateString("es-ES", {
+                                  day: "numeric",
+                                  month: "long",
+                                  year: "numeric",
+                                })}
+                              </span>
                             </div>
 
                             <div>
@@ -346,11 +303,11 @@ export default function TimelinePage() {
                                 <div className="flex items-center space-x-4 text-gray-500">
                                   <div className="flex items-center">
                                     <ImageIcon className="w-4 h-4 mr-2 text-green-500" />
-                                    <span className="font-medium">{event.images}</span>
+                                    <span className="font-medium">{event.images?.length || 0}</span>
                                   </div>
                                   <div className="flex items-center">
                                     <Play className="w-4 h-4 mr-2 text-red-500" />
-                                    <span className="font-medium">{event.videos}</span>
+                                    <span className="font-medium">{event.videos?.length || 0}</span>
                                   </div>
                                 </div>
                               </div>
@@ -362,8 +319,17 @@ export default function TimelinePage() {
                                   variant="outline"
                                   size="sm"
                                   className="border-gray-200 hover:border-purple-300 hover:bg-purple-50 bg-transparent"
+                                  onClick={() => handleViewEvent(event.id!)}
                                 >
                                   Ver Detalles
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-gray-400 hover:text-red-500"
+                                  onClick={() => handleLikeEvent(event.id!)}
+                                >
+                                  <Heart className="w-4 h-4" />
                                 </Button>
                                 <Button variant="ghost" size="sm" className="text-gray-400 hover:text-purple-600">
                                   <Share2 className="w-4 h-4" />
@@ -411,9 +377,11 @@ export default function TimelinePage() {
                       </p>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                      <Button className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-lg">
-                        <Link href="/gestion">Contribuir Evento</Link>
-                      </Button>
+                      <Link href="/upload">
+                        <Button className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-lg">
+                          Contribuir Evento
+                        </Button>
+                      </Link>
                       <Button
                         variant="outline"
                         className="border-purple-200 text-purple-600 hover:bg-purple-50 bg-transparent"

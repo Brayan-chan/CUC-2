@@ -10,23 +10,64 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
 import { Eye, EyeOff, Mail, Lock, User, ArrowLeft, Shield, Users, GraduationCap, Sparkles, Star } from "lucide-react"
 import Link from "next/link"
+import { useAuth } from "@/hooks/useAuth"
+import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [loginType, setLoginType] = useState("institucional")
-  const [isLoading, setIsLoading] = useState(false)
+  const [formData, setFormData] = useState({
+    email: "",
+    password: "",
+    matricula: "",
+    displayName: "",
+    institution: "",
+  })
+
+  const { login, register, loading } = useAuth()
+  const router = useRouter()
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    setIsLoading(true)
-    // Simular autenticación
-    setTimeout(() => {
-      setIsLoading(false)
-      // Redirigir al dashboard
-    }, 2000)
+
+    try {
+      if (loginType === "institucional") {
+        // For institutional login, we'll use matricula as email format
+        const email = formData.matricula.includes("@") ? formData.matricula : `${formData.matricula}@uacam.mx`
+
+        await login(email, formData.password)
+      } else {
+        await login(formData.email, formData.password)
+      }
+
+      toast.success("¡Bienvenido al Sistema Cultural UACAM!")
+      router.push("/dashboard")
+    } catch (error: any) {
+      toast.error("Error al iniciar sesión: " + error.message)
+    }
+  }
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    try {
+      await register(
+        formData.email,
+        formData.password,
+        formData.displayName,
+        "contributor",
+        formData.institution,
+        formData.matricula,
+      )
+
+      toast.success("¡Cuenta creada exitosamente!")
+      router.push("/dashboard")
+    } catch (error: any) {
+      toast.error("Error al crear cuenta: " + error.message)
+    }
   }
 
   return (
@@ -101,6 +142,8 @@ export default function LoginPage() {
                         <Input
                           id="matricula"
                           placeholder="Ingresa tu matrícula o ID"
+                          value={formData.matricula}
+                          onChange={(e) => setFormData((prev) => ({ ...prev, matricula: e.target.value }))}
                           className="pl-12 bg-gray-50/50 border-gray-200 focus:border-purple-300 focus:ring-purple-200 text-lg p-4 rounded-xl"
                           required
                         />
@@ -117,6 +160,8 @@ export default function LoginPage() {
                           id="password-inst"
                           type={showPassword ? "text" : "password"}
                           placeholder="Tu contraseña institucional"
+                          value={formData.password}
+                          onChange={(e) => setFormData((prev) => ({ ...prev, password: e.target.value }))}
                           className="pl-12 pr-12 bg-gray-50/50 border-gray-200 focus:border-purple-300 focus:ring-purple-200 text-lg p-4 rounded-xl"
                           required
                         />
@@ -133,9 +178,9 @@ export default function LoginPage() {
                     <Button
                       type="submit"
                       className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold shadow-lg text-lg py-4 rounded-xl"
-                      disabled={isLoading}
+                      disabled={loading}
                     >
-                      {isLoading ? (
+                      {loading ? (
                         <div className="flex items-center">
                           <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
                           Autenticando...
@@ -162,79 +207,156 @@ export default function LoginPage() {
                     </Badge>
                   </div>
 
-                  <form onSubmit={handleLogin} className="space-y-6">
-                    <div className="space-y-3">
-                      <Label htmlFor="email" className="text-gray-700 font-semibold text-lg">
-                        Correo Electrónico
-                      </Label>
-                      <div className="relative">
-                        <Mail className="absolute left-4 top-4 h-5 w-5 text-gray-400" />
-                        <Input
-                          id="email"
-                          type="email"
-                          placeholder="tu@email.com"
-                          className="pl-12 bg-gray-50/50 border-gray-200 focus:border-blue-300 focus:ring-blue-200 text-lg p-4 rounded-xl"
-                          required
-                        />
-                      </div>
-                    </div>
+                  <Tabs defaultValue="login" className="w-full">
+                    <TabsList className="grid w-full grid-cols-2 bg-gray-50 rounded-xl p-1">
+                      <TabsTrigger value="login" className="rounded-lg">
+                        Iniciar Sesión
+                      </TabsTrigger>
+                      <TabsTrigger value="register" className="rounded-lg">
+                        Crear Cuenta
+                      </TabsTrigger>
+                    </TabsList>
 
-                    <div className="space-y-3">
-                      <Label htmlFor="password-ext" className="text-gray-700 font-semibold text-lg">
-                        Contraseña
-                      </Label>
-                      <div className="relative">
-                        <Lock className="absolute left-4 top-4 h-5 w-5 text-gray-400" />
-                        <Input
-                          id="password-ext"
-                          type={showPassword ? "text" : "password"}
-                          placeholder="Tu contraseña"
-                          className="pl-12 pr-12 bg-gray-50/50 border-gray-200 focus:border-blue-300 focus:ring-blue-200 text-lg p-4 rounded-xl"
-                          required
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-4 top-4 text-gray-400 hover:text-gray-600 transition-colors"
-                        >
-                          {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                        </button>
-                      </div>
-                    </div>
-
-                    <Button
-                      type="submit"
-                      className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-semibold shadow-lg text-lg py-4 rounded-xl"
-                      disabled={isLoading}
-                    >
-                      {isLoading ? (
-                        <div className="flex items-center">
-                          <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                          Iniciando sesión...
+                    <TabsContent value="login" className="space-y-4 mt-6">
+                      <form onSubmit={handleLogin} className="space-y-6">
+                        <div className="space-y-3">
+                          <Label htmlFor="email" className="text-gray-700 font-semibold text-lg">
+                            Correo Electrónico
+                          </Label>
+                          <div className="relative">
+                            <Mail className="absolute left-4 top-4 h-5 w-5 text-gray-400" />
+                            <Input
+                              id="email"
+                              type="email"
+                              placeholder="tu@email.com"
+                              value={formData.email}
+                              onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
+                              className="pl-12 bg-gray-50/50 border-gray-200 focus:border-blue-300 focus:ring-blue-200 text-lg p-4 rounded-xl"
+                              required
+                            />
+                          </div>
                         </div>
-                      ) : (
-                        "Iniciar Sesión"
-                      )}
-                    </Button>
-                  </form>
 
-                  <div className="space-y-4">
-                    <Separator className="bg-gray-200" />
-                    <div className="flex justify-between text-sm">
-                      <Link
-                        href="/recuperar-password"
-                        className="text-blue-600 hover:text-blue-800 transition-colors font-medium"
-                      >
-                        ¿Olvidaste tu contraseña?
-                      </Link>
-                      <Link
-                        href="/registro"
-                        className="text-blue-600 hover:text-blue-800 transition-colors font-medium"
-                      >
-                        Crear cuenta
-                      </Link>
-                    </div>
-                  </div>
+                        <div className="space-y-3">
+                          <Label htmlFor="password-ext" className="text-gray-700 font-semibold text-lg">
+                            Contraseña
+                          </Label>
+                          <div className="relative">
+                            <Lock className="absolute left-4 top-4 h-5 w-5 text-gray-400" />
+                            <Input
+                              id="password-ext"
+                              type={showPassword ? "text" : "password"}
+                              placeholder="Tu contraseña"
+                              value={formData.password}
+                              onChange={(e) => setFormData((prev) => ({ ...prev, password: e.target.value }))}
+                              className="pl-12 pr-12 bg-gray-50/50 border-gray-200 focus:border-blue-300 focus:ring-blue-200 text-lg p-4 rounded-xl"
+                              required
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowPassword(!showPassword)}
+                              className="absolute right-4 top-4 text-gray-400 hover:text-gray-600 transition-colors"
+                            >
+                              {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                            </button>
+                          </div>
+                        </div>
+
+                        <Button
+                          type="submit"
+                          className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-semibold shadow-lg text-lg py-4 rounded-xl"
+                          disabled={loading}
+                        >
+                          {loading ? (
+                            <div className="flex items-center">
+                              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                              Iniciando sesión...
+                            </div>
+                          ) : (
+                            "Iniciar Sesión"
+                          )}
+                        </Button>
+                      </form>
+                    </TabsContent>
+
+                    <TabsContent value="register" className="space-y-4 mt-6">
+                      <form onSubmit={handleRegister} className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="displayName" className="text-gray-700 font-medium">
+                              Nombre Completo
+                            </Label>
+                            <Input
+                              id="displayName"
+                              placeholder="Tu nombre"
+                              value={formData.displayName}
+                              onChange={(e) => setFormData((prev) => ({ ...prev, displayName: e.target.value }))}
+                              className="bg-gray-50/50 border-gray-200 focus:border-blue-300 focus:ring-blue-200"
+                              required
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="institution" className="text-gray-700 font-medium">
+                              Institución
+                            </Label>
+                            <Input
+                              id="institution"
+                              placeholder="Tu institución"
+                              value={formData.institution}
+                              onChange={(e) => setFormData((prev) => ({ ...prev, institution: e.target.value }))}
+                              className="bg-gray-50/50 border-gray-200 focus:border-blue-300 focus:ring-blue-200"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="email-reg" className="text-gray-700 font-medium">
+                            Correo Electrónico
+                          </Label>
+                          <Input
+                            id="email-reg"
+                            type="email"
+                            placeholder="tu@email.com"
+                            value={formData.email}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
+                            className="bg-gray-50/50 border-gray-200 focus:border-blue-300 focus:ring-blue-200"
+                            required
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="password-reg" className="text-gray-700 font-medium">
+                            Contraseña
+                          </Label>
+                          <Input
+                            id="password-reg"
+                            type="password"
+                            placeholder="Mínimo 6 caracteres"
+                            value={formData.password}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, password: e.target.value }))}
+                            className="bg-gray-50/50 border-gray-200 focus:border-blue-300 focus:ring-blue-200"
+                            required
+                            minLength={6}
+                          />
+                        </div>
+
+                        <Button
+                          type="submit"
+                          className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold shadow-lg py-3 rounded-xl"
+                          disabled={loading}
+                        >
+                          {loading ? (
+                            <div className="flex items-center">
+                              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                              Creando cuenta...
+                            </div>
+                          ) : (
+                            "Crear Cuenta"
+                          )}
+                        </Button>
+                      </form>
+                    </TabsContent>
+                  </Tabs>
                 </TabsContent>
               </Tabs>
 
