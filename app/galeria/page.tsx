@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -29,508 +29,488 @@ import {
   ImageIcon,
 } from "lucide-react"
 import Link from "next/link"
+import { useGallery } from "@/hooks/useFirebase"
+import { useAuth } from "@/contexts/AuthContext"
+import { GalleryService } from "@/lib/firebase-services"
+import { GalleryItem } from "@/types"
+import { toast } from "sonner"
 
 export default function GaleriaPage() {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
   const [selectedFilter, setSelectedFilter] = useState("all")
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedImage, setSelectedImage] = useState<number | null>(null)
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear())
 
-  const galleryItems = [
-    {
-      id: 1,
-      title: "Festival Internacional de Danza 2024",
-      type: "Danza",
-      date: "15 de Marzo, 2024",
-      location: "Teatro Principal UACAM",
-      images: [
-        "/placeholder.svg?height=400&width=600&text=Danza+1",
-        "/placeholder.svg?height=400&width=600&text=Danza+2",
-        "/placeholder.svg?height=400&width=600&text=Danza+3",
-      ],
-      thumbnail: "/placeholder.svg?height=300&width=400&text=Festival+Danza",
-      likes: 245,
-      views: 1834,
-      isVideo: false,
-      gradient: "from-pink-500 to-rose-500",
-      featured: true,
-    },
-    {
-      id: 2,
-      title: "Concierto de Jazz Universitario",
-      type: "Música",
-      date: "22 de Febrero, 2024",
-      location: "Auditorio Central",
-      images: [
-        "/placeholder.svg?height=400&width=600&text=Jazz+1",
-        "/placeholder.svg?height=400&width=600&text=Jazz+2",
-      ],
-      thumbnail: "/placeholder.svg?height=300&width=400&text=Jazz+Concert",
-      likes: 189,
-      views: 1245,
-      isVideo: true,
-      gradient: "from-blue-500 to-cyan-500",
-      featured: false,
-    },
-    {
-      id: 3,
-      title: "Exposición de Arte Digital",
-      type: "Arte Visual",
-      date: "8 de Abril, 2024",
-      location: "Galería Universitaria",
-      images: [
-        "/placeholder.svg?height=400&width=600&text=Arte+1",
-        "/placeholder.svg?height=400&width=600&text=Arte+2",
-        "/placeholder.svg?height=400&width=600&text=Arte+3",
-        "/placeholder.svg?height=400&width=600&text=Arte+4",
-      ],
-      thumbnail: "/placeholder.svg?height=300&width=400&text=Arte+Digital",
-      likes: 156,
-      views: 987,
-      isVideo: false,
-      gradient: "from-purple-500 to-indigo-500",
-      featured: true,
-    },
-    {
-      id: 4,
-      title: "Día de Muertos - Altar Monumental",
-      type: "Tradición",
-      date: "25 de Octubre, 2023",
-      location: "Explanada Principal",
-      images: [
-        "/placeholder.svg?height=400&width=600&text=Altar+1",
-        "/placeholder.svg?height=400&width=600&text=Altar+2",
-        "/placeholder.svg?height=400&width=600&text=Altar+3",
-      ],
-      thumbnail: "/placeholder.svg?height=300&width=400&text=Dia+Muertos",
-      likes: 312,
-      views: 2156,
-      isVideo: false,
-      gradient: "from-orange-500 to-red-500",
-      featured: true,
-    },
-    {
-      id: 5,
-      title: "Taller de Fotografía Artística",
-      type: "Fotografía",
-      date: "10 de Marzo, 2024",
-      location: "Laboratorio de Medios",
-      images: [
-        "/placeholder.svg?height=400&width=600&text=Foto+1",
-        "/placeholder.svg?height=400&width=600&text=Foto+2",
-      ],
-      thumbnail: "/placeholder.svg?height=300&width=400&text=Fotografia",
-      likes: 98,
-      views: 567,
-      isVideo: true,
-      gradient: "from-green-500 to-emerald-500",
-      featured: false,
-    },
-    {
-      id: 6,
-      title: "Recital de Poesía Estudiantil",
-      type: "Literatura",
-      date: "5 de Mayo, 2024",
-      location: "Biblioteca Central",
-      images: ["/placeholder.svg?height=400&width=600&text=Poesia"],
-      thumbnail: "/placeholder.svg?height=300&width=400&text=Recital+Poesia",
-      likes: 87,
-      views: 423,
-      isVideo: false,
-      gradient: "from-indigo-500 to-purple-500",
-      featured: false,
-    },
-  ]
+  // Firebase hooks
+  const { galleryItems, loading, createGalleryItem } = useGallery()
+  const { user } = useAuth()
 
-  const filteredItems = galleryItems.filter((item) => {
-    const matchesFilter = selectedFilter === "all" || item.type === selectedFilter
-    const matchesSearch =
-      item.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.type.toLowerCase().includes(searchTerm.toLowerCase())
-    return matchesFilter && matchesSearch
+  // Filtered gallery items
+  const filteredItems = galleryItems.filter(item => {
+    const matchesSearch = item.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         item.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (item.tags || []).some(tag => tag?.toLowerCase().includes(searchTerm.toLowerCase()))
+    
+    const matchesFilter = selectedFilter === "all" || 
+                         (item.tags || []).some(tag => tag?.toLowerCase() === selectedFilter.toLowerCase())
+    
+    const matchesYear = !item.year || item.year === selectedYear
+    
+    return matchesSearch && matchesFilter && matchesYear
   })
 
-  const types = ["all", ...Array.from(new Set(galleryItems.map((item) => item.type)))]
+  // Handle like functionality
+  const handleLike = async (itemId: string) => {
+    if (!user) {
+      toast.error("Debes iniciar sesión para dar me gusta")
+      return
+    }
 
-  const openLightbox = (itemId: number, imageIndex = 0) => {
-    setSelectedImage(itemId * 1000 + imageIndex)
+    try {
+      await GalleryService.incrementLikes(itemId)
+      toast.success("¡Te gusta esta imagen!")
+    } catch (error) {
+      console.error("Error liking item:", error)
+      toast.error("Error al dar me gusta")
+    }
   }
 
-  const closeLightbox = () => {
-    setSelectedImage(null)
+  // Handle view increment
+  const handleViewImage = async (itemId: string, index: number) => {
+    try {
+      await GalleryService.incrementViews(itemId)
+      setSelectedImage(index)
+    } catch (error) {
+      console.error("Error incrementing views:", error)
+      setSelectedImage(index)
+    }
   }
 
   const getCurrentItem = () => {
-    if (!selectedImage) return null
-    const itemId = Math.floor(selectedImage / 1000)
-    const imageIndex = selectedImage % 1000
-    const item = galleryItems.find((i) => i.id === itemId)
-    return item ? { item, imageIndex } : null
+    if (selectedImage === null || !filteredItems[selectedImage]) return null
+    return {
+      item: filteredItems[selectedImage],
+      imageIndex: 0 // Since each gallery item has one main image
+    }
   }
 
-  const navigateLightbox = (direction: "prev" | "next") => {
-    const current = getCurrentItem()
-    if (!current) return
-
-    const { item, imageIndex } = current
-    let newIndex = imageIndex
-
-    if (direction === "next") {
-      newIndex = imageIndex + 1 >= item.images.length ? 0 : imageIndex + 1
+  const navigateImage = (direction: "prev" | "next") => {
+    if (selectedImage === null) return
+    
+    if (direction === "prev") {
+      setSelectedImage(selectedImage > 0 ? selectedImage - 1 : filteredItems.length - 1)
     } else {
-      newIndex = imageIndex - 1 < 0 ? item.images.length - 1 : imageIndex - 1
+      setSelectedImage(selectedImage < filteredItems.length - 1 ? selectedImage + 1 : 0)
     }
+  }
 
-    setSelectedImage(item.id * 1000 + newIndex)
+  // Get unique years from gallery items
+  const availableYears = [...new Set(galleryItems
+    .map(item => item.year)
+    .filter(year => year !== undefined && year !== null)
+  )].sort((a, b) => b - a)
+
+  // Get unique tags for filtering
+  const availableTags = [...new Set(galleryItems.flatMap(item => item.tags || []))]
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex items-center justify-center">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+          <p className="text-gray-600">Cargando galería...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
-      {/* Modern Header */}
-      <header className="bg-white/80 backdrop-blur-xl border-b border-gray-200/50 shadow-sm sticky top-0 z-40">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
+      {/* Header */}
+      <div className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-4">
-              <Link href="/" className="flex items-center text-gray-600 hover:text-purple-600 transition-colors">
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Inicio
+              <Link 
+                href="/" 
+                className="flex items-center text-gray-600 hover:text-purple-600 transition-colors group"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2 group-hover:-translate-x-1 transition-transform" />
+                Volver al archivo
               </Link>
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl flex items-center justify-center shadow-lg">
-                  <Sparkles className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
-                    Galería Cultural
-                  </h1>
-                  <p className="text-sm text-gray-500">Archivo Visual Interactivo</p>
-                </div>
+              <div className="hidden sm:block w-px h-6 bg-gray-300"></div>
+              <div className="flex items-center space-x-2">
+                <ImageIcon className="w-5 h-5 text-purple-600" />
+                <h1 className="text-xl font-semibold text-gray-900">Galería Cultural</h1>
               </div>
             </div>
-
+            
             <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2 bg-gray-100 rounded-full p-1">
-                <Button
-                  variant={viewMode === "grid" ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => setViewMode("grid")}
-                  className={`rounded-full ${viewMode === "grid" ? "bg-white shadow-sm" : ""}`}
-                >
-                  <Grid3X3 className="w-4 h-4" />
-                </Button>
-                <Button
-                  variant={viewMode === "list" ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => setViewMode("list")}
-                  className={`rounded-full ${viewMode === "list" ? "bg-white shadow-sm" : ""}`}
-                >
-                  <List className="w-4 h-4" />
-                </Button>
+              <div className="relative hidden md:block">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <Input
+                  type="search"
+                  placeholder="Buscar en galería..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9 w-64 bg-gray-50 border-gray-200 focus:border-purple-400 focus:ring-purple-400/20"
+                />
               </div>
             </div>
           </div>
         </div>
-      </header>
+      </div>
 
-      {/* Modern Filters */}
-      <div className="bg-white/60 backdrop-blur-xl border-b border-gray-200/50 sticky top-20 z-30">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex flex-col md:flex-row gap-4 items-center">
-            <div className="flex items-center space-x-2 flex-1">
-              <div className="relative flex-1 max-w-md">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <Input
-                  placeholder="Buscar en la galería..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 bg-white/80 border-gray-200 focus:border-purple-300 focus:ring-purple-200"
-                />
-              </div>
-            </div>
-            <div className="flex items-center space-x-4">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Mobile Search */}
+        <div className="md:hidden mb-6">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <Input
+              type="search"
+              placeholder="Buscar en galería..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-9 w-full bg-white border-gray-200 focus:border-purple-400 focus:ring-purple-400/20"
+            />
+          </div>
+        </div>
+
+        {/* Filters and Controls */}
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-8 space-y-4 lg:space-y-0">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center space-x-2">
+              <Filter className="w-4 h-4 text-gray-500" />
               <Select value={selectedFilter} onValueChange={setSelectedFilter}>
-                <SelectTrigger className="w-40 bg-white/80 border-gray-200 focus:border-purple-300">
-                  <SelectValue placeholder="Categoría" />
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Filtrar por" />
                 </SelectTrigger>
-                <SelectContent className="bg-white border-gray-200">
-                  {types.map((type) => (
-                    <SelectItem key={type} value={type}>
-                      {type === "all" ? "Todas las categorías" : type}
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {availableTags.filter(tag => tag != null && tag.trim() !== '').map((tag) => (
+                    <SelectItem key={tag} value={tag}>
+                      {tag}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+            </div>
 
+            <div className="flex items-center space-x-2">
+              <Calendar className="w-4 h-4 text-gray-500" />
+              <Select value={selectedYear.toString()} onValueChange={(value) => setSelectedYear(parseInt(value))}>
+                <SelectTrigger className="w-32">
+                  <SelectValue placeholder="Año" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableYears.filter(year => year != null).map((year) => (
+                    <SelectItem key={year} value={year.toString()}>
+                      {year}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <Badge variant="outline" className="bg-purple-50 border-purple-200 text-purple-700">
+              {filteredItems.length} elementos
+            </Badge>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <div className="flex items-center bg-gray-100 rounded-lg p-1">
               <Button
-                variant="outline"
+                variant={viewMode === "grid" ? "default" : "ghost"}
                 size="sm"
-                className="border-gray-200 hover:border-purple-300 hover:bg-purple-50 bg-white/80"
+                onClick={() => setViewMode("grid")}
+                className={`h-8 w-8 p-0 ${
+                  viewMode === "grid" 
+                    ? "bg-white shadow-sm text-purple-600" 
+                    : "text-gray-600 hover:text-gray-900"
+                }`}
               >
-                <Filter className="w-4 h-4 mr-2" />
-                Más filtros
+                <Grid3X3 className="w-4 h-4" />
+              </Button>
+              <Button
+                variant={viewMode === "list" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("list")}
+                className={`h-8 w-8 p-0 ${
+                  viewMode === "list" 
+                    ? "bg-white shadow-sm text-purple-600" 
+                    : "text-gray-600 hover:text-gray-900"
+                }`}
+              >
+                <List className="w-4 h-4" />
               </Button>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Gallery Content */}
-      <div className="container mx-auto px-6 py-8">
-        {viewMode === "grid" ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        {/* Gallery Content */}
+        {filteredItems.length === 0 ? (
+          <div className="text-center py-12">
+            <ImageIcon className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No se encontraron elementos</h3>
+            <p className="text-gray-500">
+              {galleryItems.length === 0 
+                ? "La galería está vacía. ¡Sube algunas imágenes para comenzar!"
+                : "Intenta ajustar los filtros o términos de búsqueda."
+              }
+            </p>
+          </div>
+        ) : (
+          <motion.div
+            layout
+            className={
+              viewMode === "grid"
+                ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
+                : "space-y-6"
+            }
+          >
             {filteredItems.map((item, index) => (
               <motion.div
                 key={item.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: index * 0.1 }}
-                className="group"
+                layout
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.3, delay: index * 0.05 }}
               >
-                <Card className="bg-white border-0 shadow-lg hover:shadow-2xl transition-all duration-500 overflow-hidden group-hover:scale-105">
-                  <div className="relative aspect-[4/3] overflow-hidden">
-                    <img
-                      src={item.thumbnail || "/placeholder.svg"}
-                      alt={item.title}
-                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                    />
-                    <div className={`absolute inset-0 bg-gradient-to-t ${item.gradient} opacity-40`} />
-
-                    {/* Featured Badge */}
-                    {item.featured && (
-                      <div className="absolute top-3 left-3">
-                        <Badge className="bg-gradient-to-r from-yellow-400 to-orange-400 text-white border-none shadow-lg">
-                          <Star className="w-3 h-3 mr-1" />
-                          Destacado
-                        </Badge>
-                      </div>
-                    )}
-
-                    {/* Video indicator */}
-                    {item.isVideo && (
-                      <div className="absolute top-3 right-3">
-                        <Badge className="bg-red-500/90 text-white border-none shadow-lg">
-                          <Play className="w-3 h-3 mr-1" />
-                          Video
-                        </Badge>
-                      </div>
-                    )}
-
-                    {/* Image count */}
-                    <div className="absolute bottom-3 left-3">
-                      <Badge className="bg-black/70 text-white border-none backdrop-blur-sm">
-                        <ImageIcon className="w-3 h-3 mr-1" />
-                        {item.images.length}
-                      </Badge>
-                    </div>
-
-                    {/* Overlay Actions */}
-                    <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-                      <div className="flex space-x-3">
+                {viewMode === "grid" ? (
+                  <Card className="group cursor-pointer overflow-hidden hover:shadow-xl transition-all duration-300 bg-white/80 backdrop-blur-sm border-0 shadow-md">
+                    <div className="relative aspect-[4/3] overflow-hidden">
+                      <img
+                        src={item.url || "/placeholder.svg?height=300&width=400&text=Imagen"}
+                        alt={item.title}
+                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                        onClick={() => handleViewImage(item.id!, index)}
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                      
+                      {/* Action buttons */}
+                      <div className="absolute top-3 right-3 flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                         <Button
                           size="sm"
-                          className="bg-white/90 text-gray-900 hover:bg-white shadow-lg"
-                          onClick={() => openLightbox(item.id, 0)}
+                          variant="secondary"
+                          className="h-8 w-8 p-0 bg-white/90 hover:bg-white text-gray-700"
+                          onClick={(e: React.MouseEvent) => {
+                            e.stopPropagation()
+                            handleViewImage(item.id!, index)
+                          }}
                         >
                           <Maximize2 className="w-4 h-4" />
                         </Button>
-                        <Button size="sm" className="bg-white/90 text-gray-900 hover:bg-white shadow-lg">
-                          <Share2 className="w-4 h-4" />
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="h-8 w-8 p-0 bg-white/90 hover:bg-white text-gray-700"
+                          onClick={(e: React.MouseEvent) => {
+                            e.stopPropagation()
+                            handleLike(item.id!)
+                          }}
+                        >
+                          <Heart className="w-4 h-4" />
                         </Button>
                       </div>
-                    </div>
 
-                    {/* Stats Overlay */}
-                    <div className="absolute bottom-3 right-3 flex space-x-2">
-                      <div className="bg-black/70 backdrop-blur-sm rounded-full px-2 py-1 flex items-center space-x-1">
-                        <Eye className="w-3 h-3 text-white" />
-                        <span className="text-xs font-medium text-white">{item.views}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <Badge
-                        variant="outline"
-                        className={`bg-gradient-to-r ${item.gradient} text-white border-none text-xs`}
-                      >
-                        {item.type}
-                      </Badge>
-                      <span className="text-gray-500 text-xs">{item.date}</span>
-                    </div>
-
-                    <h3 className="font-bold text-gray-900 mb-2 line-clamp-2 group-hover:text-purple-600 transition-colors">
-                      {item.title}
-                    </h3>
-
-                    <div className="flex items-center text-gray-500 text-sm mb-3">
-                      <MapPin className="w-3 h-3 mr-1" />
-                      <span className="truncate">{item.location}</span>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-4 text-gray-500 text-sm">
-                        <div className="flex items-center">
-                          <Eye className="w-3 h-3 mr-1" />
-                          {item.views}
-                        </div>
-                        <div className="flex items-center">
-                          <Heart className="w-3 h-3 mr-1 text-red-500" />
-                          {item.likes}
-                        </div>
-                      </div>
-
-                      <Button variant="ghost" size="sm" className="text-gray-400 hover:text-red-500">
-                        <Heart className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {filteredItems.map((item, index) => (
-              <motion.div
-                key={item.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: index * 0.1 }}
-              >
-                <Card className="bg-white border-0 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden">
-                  <div className="grid md:grid-cols-3 gap-0">
-                    <div className="relative aspect-[4/3] md:aspect-auto">
-                      <img
-                        src={item.thumbnail || "/placeholder.svg"}
-                        alt={item.title}
-                        className="w-full h-full object-cover"
-                      />
-                      <div className={`absolute inset-0 bg-gradient-to-r ${item.gradient} opacity-30`} />
-
-                      {item.featured && (
-                        <div className="absolute top-3 left-3">
-                          <Badge className="bg-gradient-to-r from-yellow-400 to-orange-400 text-white border-none">
-                            <Star className="w-3 h-3 mr-1" />
-                            Destacado
-                          </Badge>
-                        </div>
-                      )}
-
-                      {item.isVideo && (
-                        <div className="absolute top-3 right-3">
-                          <Badge className="bg-red-500/90 text-white border-none">
-                            <Play className="w-3 h-3 mr-1" />
-                            Video
-                          </Badge>
-                        </div>
-                      )}
-                    </div>
-
-                    <CardContent className="md:col-span-2 p-6">
-                      <div className="flex items-center justify-between mb-3">
-                        <Badge variant="outline" className={`bg-gradient-to-r ${item.gradient} text-white border-none`}>
-                          {item.type}
-                        </Badge>
-                        <span className="text-gray-500 text-sm">{item.date}</span>
-                      </div>
-
-                      <h3 className="text-2xl font-bold text-gray-900 mb-3 hover:text-purple-600 transition-colors">
-                        {item.title}
-                      </h3>
-
-                      <div className="flex items-center text-gray-500 mb-4">
-                        <MapPin className="w-4 h-4 mr-2" />
-                        {item.location}
-                      </div>
-
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-6 text-gray-500">
-                          <div className="flex items-center">
-                            <Eye className="w-4 h-4 mr-2" />
-                            {item.views} visualizaciones
+                      {/* Overlay info */}
+                      <div className="absolute bottom-3 left-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                        <div className="flex items-center justify-between text-white text-sm">
+                          <div className="flex items-center space-x-3">
+                            <div className="flex items-center space-x-1">
+                              <Eye className="w-4 h-4" />
+                              <span>{item.views}</span>
+                            </div>
+                            <div className="flex items-center space-x-1">
+                              <Heart className="w-4 h-4" />
+                              <span>{item.likes}</span>
+                            </div>
                           </div>
-                          <div className="flex items-center">
-                            <Heart className="w-4 h-4 mr-2 text-red-500" />
-                            {item.likes} me gusta
-                          </div>
-                          <div className="text-sm">
-                            <ImageIcon className="w-4 h-4 mr-1 inline" />
-                            {item.images.length} imágenes
-                          </div>
+                          {item.isHighlighted && (
+                            <div className="flex items-center space-x-1 bg-amber-500 rounded-full px-2 py-1">
+                              <Star className="w-3 h-3" />
+                              <span className="text-xs font-medium">Destacado</span>
+                            </div>
+                          )}
                         </div>
-
-                        <div className="flex space-x-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="border-gray-200 hover:border-purple-300 hover:bg-purple-50 bg-transparent"
-                            onClick={() => openLightbox(item.id, 0)}
-                          >
-                            Ver Galería
-                          </Button>
-                          <Button variant="ghost" size="sm" className="text-gray-400 hover:text-purple-600">
-                            <Share2 className="w-4 h-4" />
-                          </Button>
-                          <Button variant="ghost" size="sm" className="text-gray-400 hover:text-green-600">
-                            <Download className="w-4 h-4" />
-                          </Button>
+                      </div>
+                    </div>
+                    
+                    <CardContent className="p-4">
+                      <div className="space-y-2">
+                        <h3 className="font-semibold text-gray-900 group-hover:text-purple-600 transition-colors duration-200 line-clamp-2">
+                          {item.title}
+                        </h3>
+                        {item.description && (
+                          <p className="text-gray-600 text-sm line-clamp-2">
+                            {item.description}
+                          </p>
+                        )}
+                        <div className="flex flex-wrap gap-1">
+                          {item.tags.slice(0, 3).map((tag) => (
+                            <Badge
+                              key={tag}
+                              variant="secondary"
+                              className="text-xs bg-gray-100 text-gray-600 hover:bg-purple-100 hover:text-purple-700 transition-colors cursor-pointer"
+                              onClick={() => setSelectedFilter(tag)}
+                            >
+                              {tag}
+                            </Badge>
+                          ))}
+                          {item.tags.length > 3 && (
+                            <Badge variant="secondary" className="text-xs bg-gray-100 text-gray-600">
+                              +{item.tags.length - 3}
+                            </Badge>
+                          )}
                         </div>
                       </div>
                     </CardContent>
-                  </div>
-                </Card>
+                  </Card>
+                ) : (
+                  <Card className="group cursor-pointer overflow-hidden hover:shadow-lg transition-all duration-300 bg-white/80 backdrop-blur-sm border-0 shadow-md">
+                    <div className="flex flex-col md:flex-row">
+                      <div className="relative md:w-80 aspect-[4/3] md:aspect-[4/3] overflow-hidden">
+                        <img
+                          src={item.url || "/placeholder.svg?height=300&width=400&text=Imagen"}
+                          alt={item.title}
+                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                          onClick={() => handleViewImage(item.id!, index)}
+                        />
+                        {item.type === "video" && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                            <Play className="w-12 h-12 text-white opacity-80" />
+                          </div>
+                        )}
+                      </div>
+                      
+                      <CardContent className="flex-1 p-6">
+                        <div className="space-y-4">
+                          <div>
+                            <h3 className="text-xl font-semibold text-gray-900 group-hover:text-purple-600 transition-colors duration-200">
+                              {item.title}
+                            </h3>
+                            {item.description && (
+                              <p className="text-gray-600 mt-2">
+                                {item.description}
+                              </p>
+                            )}
+                          </div>
+                          
+                          <div className="flex flex-wrap gap-2">
+                            {item.tags.map((tag) => (
+                              <Badge
+                                key={tag}
+                                variant="secondary"
+                                className="bg-gray-100 text-gray-600 hover:bg-purple-100 hover:text-purple-700 transition-colors cursor-pointer"
+                                onClick={() => setSelectedFilter(tag)}
+                              >
+                                {tag}
+                              </Badge>
+                            ))}
+                          </div>
+                          
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-4 text-gray-500">
+                              <div className="flex items-center space-x-1">
+                                <Eye className="w-4 h-4" />
+                                <span className="text-sm">{item.views}</span>
+                              </div>
+                              <div className="flex items-center space-x-1">
+                                <Heart className="w-4 h-4" />
+                                <span className="text-sm">{item.likes}</span>
+                              </div>
+                              <div className="flex items-center space-x-1">
+                                <Calendar className="w-4 h-4" />
+                                <span className="text-sm">{item.year}</span>
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center space-x-2">
+                              {item.isHighlighted && (
+                                <Badge className="bg-amber-100 text-amber-700 border-amber-200">
+                                  <Star className="w-3 h-3 mr-1" />
+                                  Destacado
+                                </Badge>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleLike(item.id!)}
+                                className="text-gray-600 hover:text-red-500"
+                              >
+                                <Heart className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleViewImage(item.id!, index)}
+                                className="text-gray-600 hover:text-purple-600"
+                              >
+                                <Maximize2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </div>
+                  </Card>
+                )}
               </motion.div>
             ))}
-          </div>
+          </motion.div>
         )}
       </div>
 
-      {/* Modern Lightbox */}
+      {/* Lightbox Modal */}
       <AnimatePresence>
         {selectedImage !== null && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center backdrop-blur-sm"
-            onClick={closeLightbox}
+            className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setSelectedImage(null)}
           >
-            <div className="relative w-full h-full flex items-center justify-center p-4">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ type: "spring", damping: 20, stiffness: 300 }}
+              className="relative max-w-7xl mx-auto w-full h-full flex items-center justify-center"
+              onClick={(e: React.MouseEvent) => e.stopPropagation()}
+            >
               {/* Close button */}
               <Button
                 variant="ghost"
-                size="sm"
-                className="absolute top-4 right-4 text-white hover:bg-white/20 z-10 rounded-full"
-                onClick={closeLightbox}
+                size="icon"
+                onClick={() => setSelectedImage(null)}
+                className="absolute top-4 right-4 z-10 bg-black/20 hover:bg-black/40 text-white border-0 rounded-full h-12 w-12"
               >
                 <X className="w-6 h-6" />
               </Button>
 
               {/* Navigation buttons */}
-              <Button
-                variant="ghost"
-                size="sm"
-                className="absolute left-4 top-1/2 -translate-y-1/2 text-white hover:bg-white/20 z-10 rounded-full"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  navigateLightbox("prev")
-                }}
-              >
-                <ChevronLeft className="w-8 h-8" />
-              </Button>
-
-              <Button
-                variant="ghost"
-                size="sm"
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-white hover:bg-white/20 z-10 rounded-full"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  navigateLightbox("next")
-                }}
-              >
-                <ChevronRight className="w-8 h-8" />
-              </Button>
+              {filteredItems.length > 1 && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => navigateImage("prev")}
+                    className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-black/20 hover:bg-black/40 text-white border-0 rounded-full h-12 w-12 z-10"
+                  >
+                    <ChevronLeft className="w-6 h-6" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => navigateImage("next")}
+                    className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-black/20 hover:bg-black/40 text-white border-0 rounded-full h-12 w-12 z-10"
+                  >
+                    <ChevronRight className="w-6 h-6" />
+                  </Button>
+                </>
+              )}
 
               {/* Image */}
               {(() => {
@@ -538,15 +518,10 @@ export default function GaleriaPage() {
                 if (!current) return null
 
                 return (
-                  <motion.img
-                    key={selectedImage}
-                    initial={{ scale: 0.8, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    exit={{ scale: 0.8, opacity: 0 }}
-                    src={current.item.images[current.imageIndex]}
+                  <img
+                    src={current.item.url || "/placeholder.svg?height=600&width=800&text=Imagen"}
                     alt={current.item.title}
                     className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
-                    onClick={(e) => e.stopPropagation()}
                   />
                 )
               })()}
@@ -561,17 +536,22 @@ export default function GaleriaPage() {
                     <div className="flex items-center justify-between">
                       <div>
                         <h3 className="text-xl font-bold mb-1">{current.item.title}</h3>
-                        <p className="text-gray-300 text-sm mb-2">
-                          Imagen {current.imageIndex + 1} de {current.item.images.length}
-                        </p>
+                        {current.item.description && (
+                          <p className="text-gray-300 text-sm mb-2">
+                            {current.item.description}
+                          </p>
+                        )}
                         <div className="flex items-center space-x-4 text-sm text-gray-300">
                           <div className="flex items-center">
                             <Calendar className="w-4 h-4 mr-1" />
-                            {current.item.date}
+                            {current.item.year}
                           </div>
-                          <div className="flex items-center">
-                            <MapPin className="w-4 h-4 mr-1" />
-                            {current.item.location}
+                          <div className="flex flex-wrap gap-1">
+                            {current.item.tags.slice(0, 3).map((tag) => (
+                              <Badge key={tag} variant="secondary" className="text-xs bg-white/20 text-white border-0">
+                                {tag}
+                              </Badge>
+                            ))}
                           </div>
                         </div>
                       </div>
@@ -584,12 +564,21 @@ export default function GaleriaPage() {
                           <Heart className="w-4 h-4 text-red-400" />
                           <span className="text-sm">{current.item.likes}</span>
                         </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleLike(current.item.id!)}
+                          className="bg-white/20 hover:bg-white/30 text-white border-0 h-8"
+                        >
+                          <Heart className="w-4 h-4 mr-1" />
+                          Me gusta
+                        </Button>
                       </div>
                     </div>
                   </div>
                 )
               })()}
-            </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

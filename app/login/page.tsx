@@ -1,32 +1,152 @@
 "use client"
 
-import type React from "react"
-
-import { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
-import { Eye, EyeOff, Mail, Lock, User, ArrowLeft, Shield, Users, GraduationCap, Sparkles, Star } from "lucide-react"
+import { Eye, EyeOff, Mail, Lock, User, ArrowLeft, Sparkles } from "lucide-react"
 import Link from "next/link"
+import { useAuth } from "@/contexts/AuthContext"
+import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
-  const [loginType, setLoginType] = useState("institucional")
   const [isLoading, setIsLoading] = useState(false)
+  const [activeTab, setActiveTab] = useState("login")
+  
+  // Login form state
+  const [loginData, setLoginData] = useState({
+    email: "",
+    password: "",
+  })
+  
+  // Register form state
+  const [registerData, setRegisterData] = useState({
+    email: "",
+    password: "",
+    confirmPassword: "",
+    displayName: "",
+  })
+  
+  // Reset password state
+  const [resetEmail, setResetEmail] = useState("")
+
+  const { signIn, signUp, resetPassword, user, loading } = useAuth()
+  const router = useRouter()
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (!loading && user) {
+      router.push("/dashboard")
+    }
+  }, [user, loading, router])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!loginData.email || !loginData.password) {
+      toast.error("Por favor completa todos los campos")
+      return
+    }
+
     setIsLoading(true)
-    // Simular autenticación
-    setTimeout(() => {
+    try {
+      await signIn(loginData.email, loginData.password)
+      toast.success("¡Bienvenido de vuelta!")
+      router.push("/dashboard")
+    } catch (error: any) {
+      console.error("Error logging in:", error)
+      if (error.code === "auth/user-not-found") {
+        toast.error("No se encontró una cuenta con este email")
+      } else if (error.code === "auth/wrong-password") {
+        toast.error("Contraseña incorrecta")
+      } else if (error.code === "auth/invalid-email") {
+        toast.error("Email inválido")
+      } else {
+        toast.error("Error al iniciar sesión. Por favor intenta de nuevo.")
+      }
+    } finally {
       setIsLoading(false)
-      // Redirigir al dashboard
-    }, 2000)
+    }
+  }
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!registerData.email || !registerData.password || !registerData.confirmPassword || !registerData.displayName) {
+      toast.error("Por favor completa todos los campos")
+      return
+    }
+
+    if (registerData.password !== registerData.confirmPassword) {
+      toast.error("Las contraseñas no coinciden")
+      return
+    }
+
+    if (registerData.password.length < 6) {
+      toast.error("La contraseña debe tener al menos 6 caracteres")
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      await signUp(registerData.email, registerData.password, registerData.displayName)
+      toast.success("¡Cuenta creada exitosamente!")
+      router.push("/dashboard")
+    } catch (error: any) {
+      console.error("Error registering:", error)
+      if (error.code === "auth/email-already-in-use") {
+        toast.error("Ya existe una cuenta con este email")
+      } else if (error.code === "auth/weak-password") {
+        toast.error("La contraseña es muy débil")
+      } else if (error.code === "auth/invalid-email") {
+        toast.error("Email inválido")
+      } else {
+        toast.error("Error al crear la cuenta. Por favor intenta de nuevo.")
+      }
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!resetEmail) {
+      toast.error("Por favor ingresa tu email")
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      await resetPassword(resetEmail)
+      toast.success("Se ha enviado un email para restablecer tu contraseña")
+      setResetEmail("")
+      setActiveTab("login")
+    } catch (error: any) {
+      console.error("Error resetting password:", error)
+      if (error.code === "auth/user-not-found") {
+        toast.error("No se encontró una cuenta con este email")
+      } else {
+        toast.error("Error al enviar el email. Por favor intenta de nuevo.")
+      }
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex items-center justify-center">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-uacam-navy"></div>
+          <p className="text-gray-600">Verificando autenticación...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -65,211 +185,227 @@ export default function LoginPage() {
             </CardHeader>
 
             <CardContent className="space-y-6">
-              <Tabs value={loginType} onValueChange={setLoginType} className="w-full">
-                <TabsList className="grid w-full grid-cols-2 bg-gray-100/80 backdrop-blur-sm rounded-2xl p-2">
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                <TabsList className="grid w-full grid-cols-3 bg-gray-100 rounded-2xl p-2">
                   <TabsTrigger
-                    value="institucional"
-                    className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-600 data-[state=active]:to-pink-600 data-[state=active]:text-white rounded-xl transition-all duration-300"
+                    value="login"
+                    className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-600 data-[state=active]:to-pink-600 data-[state=active]:text-white data-[state=inactive]:text-gray-800 rounded-xl transition-all duration-300"
                   >
-                    <Shield className="w-4 h-4 mr-2" />
-                    Institucional
+                    Iniciar Sesión
                   </TabsTrigger>
                   <TabsTrigger
-                    value="externo"
-                    className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-600 data-[state=active]:to-cyan-600 data-[state=active]:text-white rounded-xl transition-all duration-300"
+                    value="register"
+                    className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-600 data-[state=active]:to-pink-600 data-[state=active]:text-white data-[state=inactive]:text-gray-800 rounded-xl transition-all duration-300"
                   >
-                    <Users className="w-4 h-4 mr-2" />
-                    Externo
+                    Registrarse
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="reset"
+                    className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-600 data-[state=active]:to-pink-600 data-[state=active]:text-white data-[state=inactive]:text-gray-800 rounded-xl transition-all duration-300"
+                  >
+                    Recuperar
                   </TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="institucional" className="space-y-6 mt-8">
-                  <div className="space-y-2">
-                    <Badge className="bg-gradient-to-r from-blue-100 to-cyan-100 text-blue-700 border-blue-200 px-4 py-2">
-                      <GraduationCap className="w-4 h-4 mr-2" />
-                      Acceso para personal y estudiantes UACAM
-                    </Badge>
-                  </div>
-
-                  <form onSubmit={handleLogin} className="space-y-6">
-                    <div className="space-y-3">
-                      <Label htmlFor="matricula" className="text-gray-700 font-semibold text-lg">
-                        Matrícula / ID Institucional
+                <TabsContent value="login" className="space-y-4">
+                  <form onSubmit={handleLogin} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="email" className="text-sm font-medium text-gray-800">
+                        Correo electrónico
                       </Label>
                       <div className="relative">
-                        <User className="absolute left-4 top-4 h-5 w-5 text-gray-400" />
-                        <Input
-                          id="matricula"
-                          placeholder="Ingresa tu matrícula o ID"
-                          className="pl-12 bg-gray-50/50 border-gray-200 focus:border-purple-300 focus:ring-purple-200 text-lg p-4 rounded-xl"
-                          required
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-3">
-                      <Label htmlFor="password-inst" className="text-gray-700 font-semibold text-lg">
-                        Contraseña Institucional
-                      </Label>
-                      <div className="relative">
-                        <Lock className="absolute left-4 top-4 h-5 w-5 text-gray-400" />
-                        <Input
-                          id="password-inst"
-                          type={showPassword ? "text" : "password"}
-                          placeholder="Tu contraseña institucional"
-                          className="pl-12 pr-12 bg-gray-50/50 border-gray-200 focus:border-purple-300 focus:ring-purple-200 text-lg p-4 rounded-xl"
-                          required
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-4 top-4 text-gray-400 hover:text-gray-600 transition-colors"
-                        >
-                          {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                        </button>
-                      </div>
-                    </div>
-
-                    <Button
-                      type="submit"
-                      className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold shadow-lg text-lg py-4 rounded-xl"
-                      disabled={isLoading}
-                    >
-                      {isLoading ? (
-                        <div className="flex items-center">
-                          <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                          Autenticando...
-                        </div>
-                      ) : (
-                        "Acceder con Credenciales UACAM"
-                      )}
-                    </Button>
-                  </form>
-
-                  <div className="text-center bg-gradient-to-r from-blue-50 to-cyan-50 p-4 rounded-xl border border-blue-200">
-                    <div className="flex items-center justify-center text-blue-700 text-sm">
-                      <Shield className="w-4 h-4 mr-2" />
-                      Autenticación segura mediante el sistema institucional UACAM
-                    </div>
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="externo" className="space-y-6 mt-8">
-                  <div className="space-y-2">
-                    <Badge className="bg-gradient-to-r from-green-100 to-emerald-100 text-green-700 border-green-200 px-4 py-2">
-                      <Mail className="w-4 h-4 mr-2" />
-                      Acceso para colaboradores externos
-                    </Badge>
-                  </div>
-
-                  <form onSubmit={handleLogin} className="space-y-6">
-                    <div className="space-y-3">
-                      <Label htmlFor="email" className="text-gray-700 font-semibold text-lg">
-                        Correo Electrónico
-                      </Label>
-                      <div className="relative">
-                        <Mail className="absolute left-4 top-4 h-5 w-5 text-gray-400" />
+                        <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 w-5 h-5" />
                         <Input
                           id="email"
                           type="email"
-                          placeholder="tu@email.com"
-                          className="pl-12 bg-gray-50/50 border-gray-200 focus:border-blue-300 focus:ring-blue-200 text-lg p-4 rounded-xl"
+                          value={loginData.email}
+                          onChange={(e) => setLoginData(prev => ({ ...prev, email: e.target.value }))}
+                          className="pl-10 bg-white border-gray-300 focus:border-purple-400 focus:ring-purple-400/20 rounded-xl h-12 text-gray-900 placeholder:text-gray-500"
+                          placeholder="usuario@uacam.mx"
                           required
                         />
                       </div>
                     </div>
 
-                    <div className="space-y-3">
-                      <Label htmlFor="password-ext" className="text-gray-700 font-semibold text-lg">
+                    <div className="space-y-2">
+                      <Label htmlFor="password" className="text-sm font-medium text-gray-800">
                         Contraseña
                       </Label>
                       <div className="relative">
-                        <Lock className="absolute left-4 top-4 h-5 w-5 text-gray-400" />
+                        <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 w-5 h-5" />
                         <Input
-                          id="password-ext"
+                          id="password"
                           type={showPassword ? "text" : "password"}
-                          placeholder="Tu contraseña"
-                          className="pl-12 pr-12 bg-gray-50/50 border-gray-200 focus:border-blue-300 focus:ring-blue-200 text-lg p-4 rounded-xl"
+                          value={loginData.password}
+                          onChange={(e) => setLoginData(prev => ({ ...prev, password: e.target.value }))}
+                          className="pl-10 pr-10 bg-white border-gray-300 focus:border-purple-400 focus:ring-purple-400/20 rounded-xl h-12 text-gray-900 placeholder:text-gray-500"
+                          placeholder="••••••••"
                           required
                         />
                         <button
                           type="button"
                           onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-4 top-4 text-gray-400 hover:text-gray-600 transition-colors"
+                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700 transition-colors"
                         >
-                          {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                          {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                         </button>
                       </div>
                     </div>
 
                     <Button
                       type="submit"
-                      className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-semibold shadow-lg text-lg py-4 rounded-xl"
+                      className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-xl h-12 text-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-300"
                       disabled={isLoading}
                     >
                       {isLoading ? (
-                        <div className="flex items-center">
-                          <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                          Iniciando sesión...
+                        <div className="flex items-center space-x-2">
+                          <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                          <span>Iniciando sesión...</span>
                         </div>
                       ) : (
                         "Iniciar Sesión"
                       )}
                     </Button>
                   </form>
+                </TabsContent>
 
-                  <div className="space-y-4">
-                    <Separator className="bg-gray-200" />
-                    <div className="flex justify-between text-sm">
-                      <Link
-                        href="/recuperar-password"
-                        className="text-blue-600 hover:text-blue-800 transition-colors font-medium"
-                      >
-                        ¿Olvidaste tu contraseña?
-                      </Link>
-                      <Link
-                        href="/registro"
-                        className="text-blue-600 hover:text-blue-800 transition-colors font-medium"
-                      >
-                        Crear cuenta
-                      </Link>
+                <TabsContent value="register" className="space-y-4">
+                  <form onSubmit={handleRegister} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="register-name" className="text-sm font-medium text-gray-800">
+                        Nombre completo
+                      </Label>
+                      <div className="relative">
+                        <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 w-5 h-5" />
+                        <Input
+                          id="register-name"
+                          type="text"
+                          value={registerData.displayName}
+                          onChange={(e) => setRegisterData(prev => ({ ...prev, displayName: e.target.value }))}
+                          className="pl-10 bg-white border-gray-300 focus:border-purple-400 focus:ring-purple-400/20 rounded-xl h-12 text-gray-900 placeholder:text-gray-500"
+                          placeholder="Tu nombre completo"
+                          required
+                        />
+                      </div>
                     </div>
-                  </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="register-email" className="text-sm font-medium text-gray-800">
+                        Correo electrónico
+                      </Label>
+                      <div className="relative">
+                        <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 w-5 h-5" />
+                        <Input
+                          id="register-email"
+                          type="email"
+                          value={registerData.email}
+                          onChange={(e) => setRegisterData(prev => ({ ...prev, email: e.target.value }))}
+                          className="pl-10 bg-white border-gray-300 focus:border-purple-400 focus:ring-purple-400/20 rounded-xl h-12 text-gray-900 placeholder:text-gray-500"
+                          placeholder="usuario@uacam.mx"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="register-password" className="text-sm font-medium text-gray-800">
+                        Contraseña
+                      </Label>
+                      <div className="relative">
+                        <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 w-5 h-5" />
+                        <Input
+                          id="register-password"
+                          type={showPassword ? "text" : "password"}
+                          value={registerData.password}
+                          onChange={(e) => setRegisterData(prev => ({ ...prev, password: e.target.value }))}
+                          className="pl-10 pr-10 bg-white border-gray-300 focus:border-purple-400 focus:ring-purple-400/20 rounded-xl h-12 text-gray-900 placeholder:text-gray-500"
+                          placeholder="••••••••"
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700 transition-colors"
+                        >
+                          {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="confirm-password" className="text-sm font-medium text-gray-800">
+                        Confirmar contraseña
+                      </Label>
+                      <div className="relative">
+                        <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 w-5 h-5" />
+                        <Input
+                          id="confirm-password"
+                          type={showPassword ? "text" : "password"}
+                          value={registerData.confirmPassword}
+                          onChange={(e) => setRegisterData(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                          className="pl-10 bg-white border-gray-300 focus:border-purple-400 focus:ring-purple-400/20 rounded-xl h-12 text-gray-900 placeholder:text-gray-500"
+                          placeholder="••••••••"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <Button
+                      type="submit"
+                      className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-xl h-12 text-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-300"
+                      disabled={isLoading}
+                    >
+                      {isLoading ? (
+                        <div className="flex items-center space-x-2">
+                          <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                          <span>Creando cuenta...</span>
+                        </div>
+                      ) : (
+                        "Crear Cuenta"
+                      )}
+                    </Button>
+                  </form>
+                </TabsContent>
+
+                <TabsContent value="reset" className="space-y-4">
+                  <form onSubmit={handleResetPassword} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="reset-email" className="text-sm font-medium text-gray-800">
+                        Correo electrónico
+                      </Label>
+                      <div className="relative">
+                        <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 w-5 h-5" />
+                        <Input
+                          id="reset-email"
+                          type="email"
+                          value={resetEmail}
+                          onChange={(e) => setResetEmail(e.target.value)}
+                          className="pl-10 bg-white border-gray-300 focus:border-purple-400 focus:ring-purple-400/20 rounded-xl h-12 text-gray-900 placeholder:text-gray-500"
+                          placeholder="usuario@uacam.mx"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <Button
+                      type="submit"
+                      className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-xl h-12 text-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-300"
+                      disabled={isLoading}
+                    >
+                      {isLoading ? (
+                        <div className="flex items-center space-x-2">
+                          <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                          <span>Enviando...</span>
+                        </div>
+                      ) : (
+                        "Enviar enlace de recuperación"
+                      )}
+                    </Button>
+                  </form>
                 </TabsContent>
               </Tabs>
-
-              <div className="text-center">
-                <div className="text-sm text-gray-500">
-                  Al acceder, aceptas los{" "}
-                  <Link href="/terminos" className="text-purple-600 hover:text-purple-800 underline font-medium">
-                    Términos de Uso
-                  </Link>{" "}
-                  y{" "}
-                  <Link href="/privacidad" className="text-purple-600 hover:text-purple-800 underline font-medium">
-                    Política de Privacidad
-                  </Link>
-                </div>
-              </div>
             </CardContent>
           </Card>
-        </motion.div>
-
-        {/* Institutional Info */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.2 }}
-          className="mt-8 text-center"
-        >
-          <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-6 border border-gray-200">
-            <div className="flex items-center justify-center space-x-2 mb-2">
-              <Star className="w-4 h-4 text-yellow-500" />
-              <p className="text-sm font-semibold text-gray-700">
-                Sistema desarrollado por la Dirección General de Difusión Cultural
-              </p>
-            </div>
-            <p className="text-xs text-gray-500">Universidad Autónoma de Campeche © 2024</p>
-          </div>
         </motion.div>
       </div>
     </div>

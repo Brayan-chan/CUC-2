@@ -26,6 +26,10 @@ import {
   Share2,
 } from "lucide-react"
 import Link from "next/link"
+import { useFeaturedEvents, useHighlightedGallery, useLikes, useViews } from "@/hooks/useFirebase"
+import { useAuth } from "@/contexts/AuthContext"
+import { StatisticsService } from "@/lib/firebase-services"
+import { Statistics, Event } from "@/types"
 
 export default function HomePage() {
   const { scrollY } = useScroll()
@@ -34,76 +38,83 @@ export default function HomePage() {
 
   const [currentSlide, setCurrentSlide] = useState(0)
   const [activeCategory, setActiveCategory] = useState("all")
+  const [stats, setStats] = useState<Statistics | null>(null)
 
-  const featuredEvents = [
-    {
-      id: 1,
-      title: "Festival Internacional de Danza",
-      date: "15 de Marzo, 2025",
-      type: "Danza",
-      category: "dance",
-      image: "/placeholder.svg?height=400&width=600&text=Festival+Danza",
-      description: "Encuentro internacional de danza contemporánea y folklórica",
-      participants: 120,
-      location: "Teatro Principal UACAM",
-      gradient: "from-pink-500 via-purple-500 to-indigo-500",
-      views: 2847,
-      likes: 456,
-    },
-    {
-      id: 2,
-      title: "Bienal de Arte Digital",
-      date: "22 de Abril, 2025",
-      type: "Arte Digital",
-      category: "art",
-      image: "/placeholder.svg?height=400&width=600&text=Arte+Digital",
-      description: "Exposición de arte digital y nuevas tecnologías creativas",
-      participants: 85,
-      location: "Galería Universitaria",
-      gradient: "from-cyan-500 via-blue-500 to-purple-500",
-      views: 1923,
-      likes: 342,
-    },
-    {
-      id: 3,
-      title: "Concierto Sinfónico Universitario",
-      date: "8 de Mayo, 2025",
-      type: "Música",
-      category: "music",
-      image: "/placeholder.svg?height=400&width=600&text=Concierto+Sinfonico",
-      description: "Presentación de la Orquesta Sinfónica con repertorio clásico y contemporáneo",
-      participants: 65,
-      location: "Auditorio Central",
-      gradient: "from-amber-500 via-orange-500 to-red-500",
-      views: 3156,
-      likes: 578,
-    },
-  ]
+  const { user } = useAuth()
+  const { featuredEvents, loading: eventsLoading } = useFeaturedEvents()
+  const { highlightedItems, loading: galleryLoading } = useHighlightedGallery()
+  const { toggleLike, isLiked } = useLikes()
+  const { recordView } = useViews()
 
   const categories = [
     { id: "all", name: "Todos", icon: Sparkles, color: "bg-gradient-to-r from-purple-500 to-pink-500" },
-    { id: "music", name: "Música", icon: Music, color: "bg-gradient-to-r from-blue-500 to-cyan-500" },
-    { id: "art", name: "Arte", icon: Palette, color: "bg-gradient-to-r from-green-500 to-emerald-500" },
-    { id: "dance", name: "Danza", icon: Users, color: "bg-gradient-to-r from-pink-500 to-rose-500" },
-    { id: "literature", name: "Literatura", icon: BookOpen, color: "bg-gradient-to-r from-indigo-500 to-purple-500" },
-    { id: "photography", name: "Fotografía", icon: Camera, color: "bg-gradient-to-r from-orange-500 to-red-500" },
+    { id: "Música", name: "Música", icon: Music, color: "bg-gradient-to-r from-blue-500 to-cyan-500" },
+    { id: "Arte", name: "Arte", icon: Palette, color: "bg-gradient-to-r from-green-500 to-emerald-500" },
+    { id: "Danza", name: "Danza", icon: Users, color: "bg-gradient-to-r from-pink-500 to-rose-500" },
+    { id: "Literatura", name: "Literatura", icon: BookOpen, color: "bg-gradient-to-r from-indigo-500 to-purple-500" },
+    { id: "Otro", name: "Fotografía", icon: Camera, color: "bg-gradient-to-r from-orange-500 to-red-500" },
   ]
 
-  const stats = [
-    { number: "2,847", label: "Eventos Preservados", icon: Calendar, gradient: "from-blue-500 to-cyan-500" },
-    { number: "15,392", label: "Archivos Multimedia", icon: ImageIcon, gradient: "from-green-500 to-emerald-500" },
-    { number: "1,284", label: "Horas de Video", icon: Video, gradient: "from-purple-500 to-pink-500" },
-    { number: "8,756", label: "Participantes", icon: Users, gradient: "from-orange-500 to-red-500" },
-  ]
-
+  // Load statistics
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % featuredEvents.length)
-    }, 5000)
-    return () => clearInterval(timer)
+    const loadStats = async () => {
+      try {
+        await StatisticsService.updateStatistics()
+        const statistics = await StatisticsService.getStatistics()
+        setStats(statistics)
+      } catch (error) {
+        console.error("Error loading statistics:", error)
+      }
+    }
+
+    loadStats()
   }, [])
 
-  const filteredEvents = featuredEvents.filter((event) => activeCategory === "all" || event.category === activeCategory)
+  // Filter events by category
+  const filteredEvents = featuredEvents.filter((event) => 
+    activeCategory === "all" || event.category === activeCategory
+  )
+
+  // Auto-rotate slides
+  useEffect(() => {
+    if (featuredEvents.length > 0) {
+      const timer = setInterval(() => {
+        setCurrentSlide((prev) => (prev + 1) % featuredEvents.length)
+      }, 5000)
+      return () => clearInterval(timer)
+    }
+  }, [featuredEvents.length])
+
+  // Handle like event
+  const handleLike = async (eventId: string) => {
+    if (!user) {
+      // Redirect to login or show message
+      return
+    }
+    
+    try {
+      await toggleLike(eventId, 'event')
+    } catch (error) {
+      console.error('Error liking event:', error)
+    }
+  }
+
+  // Handle view event
+  const handleView = async (eventId: string) => {
+    try {
+      await recordView(eventId, 'event')
+    } catch (error) {
+      console.error('Error recording view:', error)
+    }
+  }
+
+  // Create stats array from Statistics object
+  const statsArray = stats ? [
+    { number: stats.totalEvents.toLocaleString(), label: "Eventos Preservados", icon: Calendar, gradient: "from-blue-500 to-cyan-500" },
+    { number: stats.totalGalleryItems.toLocaleString(), label: "Archivos Multimedia", icon: ImageIcon, gradient: "from-green-500 to-emerald-500" },
+    { number: Math.floor(stats.totalViews / 60).toLocaleString(), label: "Horas de Contenido", icon: Video, gradient: "from-purple-500 to-pink-500" },
+    { number: stats.totalUsers.toLocaleString(), label: "Usuarios Activos", icon: Users, gradient: "from-orange-500 to-red-500" },
+  ] : [];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
@@ -227,72 +238,84 @@ export default function HomePage() {
               className="relative"
             >
               <div className="relative">
-                {/* Main Featured Card */}
-                <motion.div
-                  key={currentSlide}
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.6 }}
-                  className="relative overflow-hidden rounded-3xl shadow-2xl bg-white"
-                >
-                  <div className="aspect-[4/3] relative">
-                    <img
-                      src={featuredEvents[currentSlide].image || "/placeholder.svg"}
-                      alt={featuredEvents[currentSlide].title}
-                      className="w-full h-full object-cover"
-                    />
-                    <div
-                      className={`absolute inset-0 bg-gradient-to-t ${featuredEvents[currentSlide].gradient} opacity-60`}
-                    />
+                {/* Show loading state if no events */}
+                {featuredEvents.length === 0 ? (
+                  <div className="relative overflow-hidden rounded-3xl shadow-2xl bg-white aspect-[4/3] flex items-center justify-center">
+                    <div className="text-center">
+                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-uacam-navy mx-auto mb-4"></div>
+                      <p className="text-gray-600">Cargando eventos destacados...</p>
+                    </div>
+                  </div>
+                ) : (
+                  /* Main Featured Card */
+                  <motion.div
+                    key={currentSlide}
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.6 }}
+                    className="relative overflow-hidden rounded-3xl shadow-2xl bg-white"
+                  >
+                    <div className="aspect-[4/3] relative">
+                      <img
+                        src={featuredEvents[currentSlide]?.images?.[0] || "/placeholder.svg"}
+                        alt={featuredEvents[currentSlide]?.title || "Evento"}
+                        className="w-full h-full object-cover"
+                      />
+                      <div
+                        className={`absolute inset-0 bg-gradient-to-t ${featuredEvents[currentSlide]?.gradient || 'from-black/60 to-transparent'} opacity-60`}
+                      />
 
                     {/* Floating Stats */}
                     <div className="absolute top-4 right-4 flex space-x-2">
                       <div className="bg-white/90 backdrop-blur-sm rounded-full px-3 py-1 flex items-center space-x-1">
                         <Eye className="w-3 h-3 text-gray-600" />
-                        <span className="text-xs font-medium text-gray-700">{featuredEvents[currentSlide].views}</span>
+                        <span className="text-xs font-medium text-gray-700">{featuredEvents[currentSlide]?.views || 0}</span>
                       </div>
                       <div className="bg-white/90 backdrop-blur-sm rounded-full px-3 py-1 flex items-center space-x-1">
                         <Heart className="w-3 h-3 text-red-500" />
-                        <span className="text-xs font-medium text-gray-700">{featuredEvents[currentSlide].likes}</span>
+                        <span className="text-xs font-medium text-gray-700">{featuredEvents[currentSlide]?.likes || 0}</span>
                       </div>
                     </div>
                   </div>
 
                   <div className="p-6">
                     <Badge
-                      className={`mb-3 bg-gradient-to-r ${featuredEvents[currentSlide].gradient} text-white border-none`}
+                      className={`mb-3 bg-gradient-to-r ${featuredEvents[currentSlide]?.gradient || 'from-gray-500 to-gray-600'} text-white border-none`}
                     >
-                      {featuredEvents[currentSlide].type}
+                      {featuredEvents[currentSlide]?.type || 'Evento'}
                     </Badge>
-                    <h3 className="text-xl font-bold text-gray-900 mb-2">{featuredEvents[currentSlide].title}</h3>
-                    <p className="text-gray-600 text-sm mb-4">{featuredEvents[currentSlide].description}</p>
+                    <h3 className="text-xl font-bold text-gray-900 mb-2">{featuredEvents[currentSlide]?.title || 'Título no disponible'}</h3>
+                    <p className="text-gray-600 text-sm mb-4">{featuredEvents[currentSlide]?.description || 'Descripción no disponible'}</p>
                     <div className="flex items-center justify-between text-sm text-gray-500">
                       <div className="flex items-center">
                         <Calendar className="w-4 h-4 mr-1" />
-                        {featuredEvents[currentSlide].date}
+                        {featuredEvents[currentSlide]?.date?.toDate?.()?.toLocaleDateString('es-MX') || 'Fecha no disponible'}
                       </div>
                       <div className="flex items-center">
                         <Users className="w-4 h-4 mr-1" />
-                        {featuredEvents[currentSlide].participants}
+                        {featuredEvents[currentSlide]?.participants || 'N/A'}
                       </div>
                     </div>
                   </div>
                 </motion.div>
+                )}
 
                 {/* Slide Indicators */}
-                <div className="flex justify-center mt-6 space-x-2">
-                  {featuredEvents.map((_, index) => (
-                    <button
-                      key={index}
-                      onClick={() => setCurrentSlide(index)}
-                      className={`w-3 h-3 rounded-full transition-all duration-300 ${
-                        index === currentSlide
-                          ? "bg-gradient-to-r from-purple-500 to-pink-500 scale-125"
-                          : "bg-gray-300 hover:bg-gray-400"
-                      }`}
-                    />
-                  ))}
-                </div>
+                {featuredEvents.length > 0 && (
+                  <div className="flex justify-center mt-6 space-x-2">
+                    {featuredEvents.map((_, index) => (
+                      <button
+                        key={index}
+                        onClick={() => setCurrentSlide(index)}
+                        className={`w-3 h-3 rounded-full transition-all duration-300 ${
+                          index === currentSlide
+                            ? "bg-gradient-to-r from-purple-500 to-pink-500 scale-125"
+                            : "bg-gray-300 hover:bg-gray-400"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             </motion.div>
           </div>
@@ -318,7 +341,7 @@ export default function HomePage() {
           </motion.div>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
-            {stats.map((stat, index) => (
+            {statsArray.map((stat, index) => (
               <motion.div
                 key={index}
                 initial={{ opacity: 0, y: 30 }}
@@ -396,11 +419,11 @@ export default function HomePage() {
                 <Card className="bg-white border-0 shadow-lg hover:shadow-2xl transition-all duration-500 group-hover:scale-105 overflow-hidden">
                   <div className="relative aspect-[4/3] overflow-hidden">
                     <img
-                      src={event.image || "/placeholder.svg"}
-                      alt={event.title}
+                      src={event.images?.[0] || "/placeholder.svg"}
+                      alt={event.title || "Evento"}
                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                     />
-                    <div className={`absolute inset-0 bg-gradient-to-t ${event.gradient} opacity-60`} />
+                    <div className={`absolute inset-0 bg-gradient-to-t ${event.gradient || 'from-black/60 to-transparent'} opacity-60`} />
 
                     {/* Overlay Actions */}
                     <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">

@@ -2,6 +2,9 @@ import type React from "react"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
+import { AuthProvider } from "@/contexts/AuthContext"
+import { Toaster } from "@/components/ui/sonner"
+import Script from "next/script"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -18,8 +21,20 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="es">
-      <body className={inter.className}>{children}</body>
+    <html lang="es" suppressHydrationWarning>
+      <head>
+        <Script
+          src="https://upload-widget.cloudinary.com/global/all.js"
+          type="text/javascript"
+          strategy="beforeInteractive"
+        />
+      </head>
+      <body className={inter.className}>
+        <AuthProvider>
+          {children}
+        </AuthProvider>
+        <Toaster />
+      </body>
     </html>
   )
 }
