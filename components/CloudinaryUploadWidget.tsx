@@ -1,123 +1,139 @@
 "use client"
 
-import type React from "react"
-
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Upload, X, FileText, ImageIcon, Video } from "lucide-react"
-import type { CloudinaryUploadResult } from "@/lib/cloudinary"
+import { Progress } from "@/components/ui/progress"
+import { Badge } from "@/components/ui/badge"
+import { Card, CardContent } from "@/components/ui/card"
+import { Upload, X, FileImage, FileVideo, FileText, CheckCircle } from "lucide-react"
+import { toast } from "sonner"
 
-interface CloudinaryUploadWidgetProps {
-  onUpload: (results: CloudinaryUploadResult[]) => void
-  multiple?: boolean
-  accept?: string
-  maxFiles?: number
-  children?: React.ReactNode
+declare global {
+  interface Window {
+    cloudinary: any
+  }
 }
 
-export const CloudinaryUploadWidget: React.FC<CloudinaryUploadWidgetProps> = ({
+interface CloudinaryUploadWidgetProps {
+  onUpload: (results: any[]) => void
+  folder?: string
+  maxFiles?: number
+  resourceTypes?: string[]
+  className?: string
+}
+
+interface UploadedFile {
+  public_id: string
+  secure_url: string
+  format: string
+  resource_type: string
+  bytes: number
+  width?: number
+  height?: number
+  duration?: number
+  original_filename: string
+}
+
+export default function CloudinaryUploadWidget({
   onUpload,
-  multiple = true,
-  accept = "image/*,video/*,.pdf,.doc,.docx",
+  folder = "cultura-uacam",
   maxFiles = 10,
-  children,
-}) => {
-  const [isScriptLoaded, setIsScriptLoaded] = useState(false)
-  const [uploadedFiles, setUploadedFiles] = useState<CloudinaryUploadResult[]>([])
+  resourceTypes = ["image", "video", "raw"],
+  className = "",
+}: CloudinaryUploadWidgetProps) {
+  const cloudinaryRef = useRef<any>()
+  const widgetRef = useRef<any>()
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
 
   useEffect(() => {
-    // Check if Cloudinary script is already loaded
-    if ((window as any).cloudinary) {
-      setIsScriptLoaded(true)
-      return
-    }
+    if (typeof window !== "undefined" && window.cloudinary) {
+      cloudinaryRef.current = window.cloudinary
 
-    // Load Cloudinary script
-    const script = document.createElement("script")
-    script.src = "https://upload-widget.cloudinary.com/global/all.js"
-    script.async = true
-    script.onload = () => setIsScriptLoaded(true)
-    document.body.appendChild(script)
-
-    return () => {
-      if (document.body.contains(script)) {
-        document.body.removeChild(script)
-      }
-    }
-  }, [])
-
-  const openWidget = () => {
-    if (!isScriptLoaded || !(window as any).cloudinary) {
-      console.error("Cloudinary script not loaded")
-      return
-    }
-
-    const widget = (window as any).cloudinary.createUploadWidget(
-      {
-        cloudName: "dmyejrbs7",
-        uploadPreset: "apuntes",
-        sources: ["local", "camera"],
-        multiple,
-        maxFiles,
-        maxFileSize: 100000000, // 100MB
-        resourceType: "auto",
-        clientAllowedFormats: ["jpg", "jpeg", "png", "gif", "mp4", "mov", "avi", "pdf", "doc", "docx"],
-        maxVideoFileSize: 100000000,
-        folder: "cultura-uacam",
-        tags: ["cultura", "uacam", "eventos"],
-        cropping: false,
-        showAdvancedOptions: true,
-        showUploadMoreButton: multiple,
-        styles: {
-          palette: {
-            window: "#FFFFFF",
-            windowBorder: "#90A0B3",
-            tabIcon: "#8B5CF6",
-            menuIcons: "#5A616A",
-            textDark: "#000000",
-            textLight: "#FFFFFF",
-            link: "#8B5CF6",
-            action: "#8B5CF6",
-            inactiveTabIcon: "#0E2F5A",
-            error: "#F44235",
-            inProgress: "#0078FF",
-            complete: "#20B832",
-            sourceBg: "#E4EBF1",
+      widgetRef.current = cloudinaryRef.current.createUploadWidget(
+        {
+          cloudName: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
+          uploadPreset: "cultura-uacam",
+          folder: folder,
+          multiple: true,
+          maxFiles: maxFiles,
+          resourceType: "auto",
+          clientAllowedFormats: ["jpg", "jpeg", "png", "gif", "mp4", "mov", "avi", "pdf", "doc", "docx"],
+          maxFileSize: 50000000, // 50MB
+          sources: ["local", "url", "camera"],
+          showAdvancedOptions: false,
+          cropping: false,
+          theme: "minimal",
+          styles: {
+            palette: {
+              window: "#FFFFFF",
+              windowBorder: "#E5E7EB",
+              tabIcon: "#8B5CF6",
+              menuIcons: "#6B7280",
+              textDark: "#1F2937",
+              textLight: "#6B7280",
+              link: "#8B5CF6",
+              action: "#8B5CF6",
+              inactiveTabIcon: "#9CA3AF",
+              error: "#EF4444",
+              inProgress: "#8B5CF6",
+              complete: "#10B981",
+              sourceBg: "#F9FAFB",
+            },
           },
         },
-      },
-      (error: any, result: any) => {
-        if (error) {
-          console.error("Upload error:", error)
-          return
-        }
+        (error: any, result: any) => {
+          if (!error && result && result.event === "success") {
+            const newFile: UploadedFile = {
+              public_id: result.info.public_id,
+              secure_url: result.info.secure_url,
+              format: result.info.format,
+              resource_type: result.info.resource_type,
+              bytes: result.info.bytes,
+              width: result.info.width,
+              height: result.info.height,
+              duration: result.info.duration,
+              original_filename: result.info.original_filename || result.info.public_id,
+            }
 
-        if (result.event === "success") {
-          const newFile: CloudinaryUploadResult = {
-            public_id: result.info.public_id,
-            secure_url: result.info.secure_url,
-            format: result.info.format,
-            resource_type: result.info.resource_type,
-            bytes: result.info.bytes,
-            width: result.info.width,
-            height: result.info.height,
-            duration: result.info.duration,
+            setUploadedFiles((prev) => {
+              const updated = [...prev, newFile]
+              onUpload(updated)
+              return updated
+            })
+
+            toast.success(`Archivo subido: ${newFile.original_filename}`)
           }
 
-          setUploadedFiles((prev) => {
-            const updated = [...prev, newFile]
-            onUpload(updated)
-            return updated
-          })
-        }
+          if (result && result.event === "upload-added") {
+            setIsUploading(true)
+            setUploadProgress(0)
+          }
 
-        if (result.event === "close") {
-          widget.close()
-        }
-      },
-    )
+          if (result && result.event === "progress") {
+            setUploadProgress(result.info.progress || 0)
+          }
 
-    widget.open()
+          if (result && result.event === "close") {
+            setIsUploading(false)
+            setUploadProgress(0)
+          }
+
+          if (error) {
+            console.error("Upload error:", error)
+            toast.error("Error al subir archivo: " + error.message)
+            setIsUploading(false)
+          }
+        },
+      )
+    }
+  }, [folder, maxFiles, onUpload])
+
+  const openWidget = () => {
+    if (widgetRef.current) {
+      widgetRef.current.open()
+    }
   }
 
   const removeFile = (publicId: string) => {
@@ -126,12 +142,13 @@ export const CloudinaryUploadWidget: React.FC<CloudinaryUploadWidgetProps> = ({
       onUpload(updated)
       return updated
     })
+    toast.success("Archivo eliminado")
   }
 
   const getFileIcon = (resourceType: string, format: string) => {
-    if (resourceType === "image") return <ImageIcon className="w-5 h-5" />
-    if (resourceType === "video") return <Video className="w-5 h-5" />
-    return <FileText className="w-5 h-5" />
+    if (resourceType === "image") return <FileImage className="w-4 h-4" />
+    if (resourceType === "video") return <FileVideo className="w-4 h-4" />
+    return <FileText className="w-4 h-4" />
   }
 
   const formatFileSize = (bytes: number) => {
@@ -143,52 +160,82 @@ export const CloudinaryUploadWidget: React.FC<CloudinaryUploadWidgetProps> = ({
   }
 
   return (
-    <div className="space-y-4">
-      {children ? (
-        <div onClick={openWidget} className="cursor-pointer">
-          {children}
-        </div>
-      ) : (
+    <div className={`space-y-4 ${className}`}>
+      {/* Upload Button */}
+      <div className="flex flex-col items-center">
         <Button
-          type="button"
           onClick={openWidget}
-          disabled={!isScriptLoaded}
+          disabled={isUploading}
           className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-lg"
         >
           <Upload className="w-4 h-4 mr-2" />
-          {isScriptLoaded ? "Subir Archivos" : "Cargando..."}
+          {isUploading ? "Subiendo..." : "Seleccionar Archivos"}
         </Button>
-      )}
 
+        {isUploading && (
+          <div className="w-full max-w-xs mt-4">
+            <Progress value={uploadProgress} className="h-2" />
+            <p className="text-sm text-gray-600 text-center mt-2">Subiendo... {Math.round(uploadProgress)}%</p>
+          </div>
+        )}
+      </div>
+
+      {/* Uploaded Files List */}
       {uploadedFiles.length > 0 && (
         <div className="space-y-2">
           <h4 className="font-semibold text-gray-900">Archivos Subidos ({uploadedFiles.length})</h4>
-          {uploadedFiles.map((file, index) => (
-            <div key={file.public_id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
-              <div className="flex items-center space-x-3">
-                <div className="text-purple-600">{getFileIcon(file.resource_type, file.format)}</div>
-                <div>
-                  <p className="font-medium text-gray-900">
-                    {file.public_id.split("/").pop()}.{file.format}
-                  </p>
-                  <p className="text-sm text-gray-600">
-                    {formatFileSize(file.bytes)} • {file.resource_type}
-                  </p>
-                </div>
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => removeFile(file.public_id)}
-                className="text-red-500 hover:text-red-700"
-              >
-                <X className="w-4 h-4" />
-              </Button>
-            </div>
-          ))}
+          <div className="grid gap-2 max-h-60 overflow-y-auto">
+            {uploadedFiles.map((file) => (
+              <Card key={file.public_id} className="border border-gray-200">
+                <CardContent className="p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3 flex-1 min-w-0">
+                      <div className="flex-shrink-0">{getFileIcon(file.resource_type, file.format)}</div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{file.original_filename}</p>
+                        <div className="flex items-center space-x-2 mt-1">
+                          <Badge variant="secondary" className="text-xs">
+                            {file.format.toUpperCase()}
+                          </Badge>
+                          <span className="text-xs text-gray-500">{formatFileSize(file.bytes)}</span>
+                          {file.resource_type === "image" && file.width && file.height && (
+                            <span className="text-xs text-gray-500">
+                              {file.width}×{file.height}
+                            </span>
+                          )}
+                          {file.resource_type === "video" && file.duration && (
+                            <span className="text-xs text-gray-500">{Math.round(file.duration)}s</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <CheckCircle className="w-4 h-4 text-green-500" />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeFile(file.public_id)}
+                          className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </div>
       )}
+
+      {/* Upload Instructions */}
+      <div className="text-center text-sm text-gray-500 bg-gray-50 p-4 rounded-lg">
+        <p>Formatos soportados: JPG, PNG, GIF, MP4, MOV, AVI, PDF, DOC, DOCX</p>
+        <p>Tamaño máximo: 50MB por archivo • Máximo {maxFiles} archivos</p>
+      </div>
+
+      {/* Cloudinary Script */}
+      <script src="https://widget.cloudinary.com/v2.0/global/all.js" async />
     </div>
   )
 }
