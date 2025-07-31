@@ -4,78 +4,107 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
-  getDocs,
   getDoc,
+  getDocs,
   query,
   where,
   orderBy,
+  limit,
   onSnapshot,
   serverTimestamp,
-  type Timestamp,
+  increment,
 } from "firebase/firestore"
 import { db } from "./firebase"
+
+export interface UserData {
+  id: string
+  email: string
+  displayName: string
+  role: "admin" | "moderator" | "contributor" | "viewer"
+  institution?: string
+  matricula?: string
+  createdAt?: any
+  updatedAt?: any
+}
 
 export interface EventData {
   id?: string
   title: string
   description: string
   date: string
-  location: string
-  type: string
-  participants: number
+  category: string
   tags: string[]
-  images: Array<{
-    url: string
-    publicId: string
-    format: string
-  }>
-  videos: Array<{
-    url: string
-    publicId: string
-    format: string
-    duration?: number
-  }>
-  documents: Array<{
-    url: string
-    publicId: string
-    format: string
-    name: string
-  }>
-  createdBy: string
-  createdAt: Timestamp
-  updatedAt: Timestamp
+  images: string[]
+  videos: string[]
+  documents: string[]
+  location?: string
+  participants?: string[]
+  significance: string
+  sources: string[]
   status: "draft" | "pending" | "approved" | "rejected"
-  featured: boolean
-  views: number
-  likes: number
-  year: string
-  gradient?: string
+  createdBy: string
+  createdAt?: any
+  updatedAt?: any
+  views?: number
+  likes?: number
+  shares?: number
 }
 
-export interface UserData {
-  id: string
-  email: string
-  displayName: string
-  role: "admin" | "editor" | "contributor"
-  institution?: string
-  matricula?: string
-  createdAt: Timestamp
-  lastLogin: Timestamp
-}
-
-// Events Collection
-export const eventsCollection = collection(db, "events")
-export const timelineEventsCollection = collection(db, "timelineEvents")
-export const usersCollection = collection(db, "users")
-
-// Create Event
-export const createEvent = async (eventData: Omit<EventData, "id" | "createdAt" | "updatedAt">): Promise<string> => {
+// User functions
+export const createOrUpdateUser = async (userData: Omit<UserData, "createdAt" | "updatedAt">) => {
   try {
-    const docRef = await addDoc(eventsCollection, {
+    const userRef = doc(db, "users", userData.id)
+    const userDoc = await getDoc(userRef)
+
+    if (userDoc.exists()) {
+      await updateDoc(userRef, {
+        ...userData,
+        updatedAt: serverTimestamp(),
+      })
+    } else {
+      await updateDoc(userRef, {
+        ...userData,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      })
+    }
+
+    return userData
+  } catch (error) {
+    console.error("Error creating/updating user:", error)
+    throw error
+  }
+}
+
+export const getUserData = async (userId: string): Promise<UserData | null> => {
+  try {
+    const userRef = doc(db, "users", userId)
+    const userDoc = await getDoc(userRef)
+
+    if (userDoc.exists()) {
+      return { id: userDoc.id, ...userDoc.data() } as UserData
+    }
+
+    return null
+  } catch (error) {
+    console.error("Error getting user data:", error)
+    throw error
+  }
+}
+
+// Event functions
+export const createEvent = async (eventData: Omit<EventData, "id" | "createdAt" | "updatedAt">) => {
+  try {
+    const eventsRef = collection(db, "events")
+    const docRef = await addDoc(eventsRef, {
       ...eventData,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
+      views: 0,
+      likes: 0,
+      shares: 0,
     })
+
     return docRef.id
   } catch (error) {
     console.error("Error creating event:", error)
@@ -83,10 +112,9 @@ export const createEvent = async (eventData: Omit<EventData, "id" | "createdAt" 
   }
 }
 
-// Update Event
-export const updateEvent = async (eventId: string, eventData: Partial<EventData>): Promise<void> => {
+export const updateEvent = async (eventId: string, eventData: Partial<EventData>) => {
   try {
-    const eventRef = doc(eventsCollection, eventId)
+    const eventRef = doc(db, "events", eventId)
     await updateDoc(eventRef, {
       ...eventData,
       updatedAt: serverTimestamp(),
@@ -97,10 +125,9 @@ export const updateEvent = async (eventId: string, eventData: Partial<EventData>
   }
 }
 
-// Delete Event
-export const deleteEvent = async (eventId: string): Promise<void> => {
+export const deleteEvent = async (eventId: string) => {
   try {
-    const eventRef = doc(eventsCollection, eventId)
+    const eventRef = doc(db, "events", eventId)
     await deleteDoc(eventRef)
   } catch (error) {
     console.error("Error deleting event:", error)
@@ -108,140 +135,110 @@ export const deleteEvent = async (eventId: string): Promise<void> => {
   }
 }
 
-// Get Events with Real-time Updates
-export const subscribeToEvents = (callback: (events: EventData[]) => void) => {
-  const q = query(eventsCollection, orderBy("createdAt", "desc"))
-
-  return onSnapshot(q, (snapshot) => {
-    const events: EventData[] = []
-    snapshot.forEach((doc) => {
-      events.push({ id: doc.id, ...doc.data() } as EventData)
-    })
-    callback(events)
-  })
-}
-
-// Get Timeline Events with Real-time Updates
-export const subscribeToTimelineEvents = (callback: (events: EventData[]) => void) => {
-  const q = query(timelineEventsCollection, where("status", "==", "approved"), orderBy("date", "desc"))
-
-  return onSnapshot(q, (snapshot) => {
-    const events: EventData[] = []
-    snapshot.forEach((doc) => {
-      events.push({ id: doc.id, ...doc.data() } as EventData)
-    })
-    callback(events)
-  })
-}
-
-// Get Events by Status
-export const getEventsByStatus = async (status: EventData["status"]): Promise<EventData[]> => {
+export const getEvent = async (eventId: string): Promise<EventData | null> => {
   try {
-    const q = query(eventsCollection, where("status", "==", status), orderBy("createdAt", "desc"))
-    const snapshot = await getDocs(q)
-    const events: EventData[] = []
-    snapshot.forEach((doc) => {
-      events.push({ id: doc.id, ...doc.data() } as EventData)
-    })
-    return events
-  } catch (error) {
-    console.error("Error getting events by status:", error)
-    throw error
-  }
-}
+    const eventRef = doc(db, "events", eventId)
+    const eventDoc = await getDoc(eventRef)
 
-// Add Event to Timeline
-export const addEventToTimeline = async (eventId: string): Promise<void> => {
-  try {
-    const eventRef = doc(eventsCollection, eventId)
-    const eventSnap = await getDoc(eventRef)
-
-    if (eventSnap.exists()) {
-      const eventData = eventSnap.data() as EventData
-      await addDoc(timelineEventsCollection, {
-        ...eventData,
-        originalEventId: eventId,
-        addedToTimelineAt: serverTimestamp(),
-      })
+    if (eventDoc.exists()) {
+      return { id: eventDoc.id, ...eventDoc.data() } as EventData
     }
-  } catch (error) {
-    console.error("Error adding event to timeline:", error)
-    throw error
-  }
-}
 
-// Create or Update User
-export const createOrUpdateUser = async (userData: Omit<UserData, "createdAt">): Promise<void> => {
-  try {
-    const userRef = doc(usersCollection, userData.id)
-    const userSnap = await getDoc(userRef)
-
-    if (userSnap.exists()) {
-      await updateDoc(userRef, {
-        ...userData,
-        lastLogin: serverTimestamp(),
-      })
-    } else {
-      await updateDoc(userRef, {
-        ...userData,
-        createdAt: serverTimestamp(),
-        lastLogin: serverTimestamp(),
-      })
-    }
-  } catch (error) {
-    console.error("Error creating/updating user:", error)
-    throw error
-  }
-}
-
-// Get User Data
-export const getUserData = async (userId: string): Promise<UserData | null> => {
-  try {
-    const userRef = doc(usersCollection, userId)
-    const userSnap = await getDoc(userRef)
-
-    if (userSnap.exists()) {
-      return { id: userSnap.id, ...userSnap.data() } as UserData
-    }
     return null
   } catch (error) {
-    console.error("Error getting user data:", error)
+    console.error("Error getting event:", error)
     throw error
   }
 }
 
-// Update Event Views
-export const incrementEventViews = async (eventId: string): Promise<void> => {
+export const getEvents = async (filters?: {
+  category?: string
+  status?: string
+  limit?: number
+  orderBy?: string
+}) => {
   try {
-    const eventRef = doc(eventsCollection, eventId)
-    const eventSnap = await getDoc(eventRef)
+    let q = query(collection(db, "events"))
 
-    if (eventSnap.exists()) {
-      const currentViews = eventSnap.data().views || 0
-      await updateDoc(eventRef, {
-        views: currentViews + 1,
-      })
+    if (filters?.category) {
+      q = query(q, where("category", "==", filters.category))
     }
+
+    if (filters?.status) {
+      q = query(q, where("status", "==", filters.status))
+    }
+
+    if (filters?.orderBy) {
+      q = query(q, orderBy(filters.orderBy, "desc"))
+    }
+
+    if (filters?.limit) {
+      q = query(q, limit(filters.limit))
+    }
+
+    const querySnapshot = await getDocs(q)
+    const events: EventData[] = []
+
+    querySnapshot.forEach((doc) => {
+      events.push({ id: doc.id, ...doc.data() } as EventData)
+    })
+
+    return events
+  } catch (error) {
+    console.error("Error getting events:", error)
+    throw error
+  }
+}
+
+export const subscribeToEvents = (
+  callback: (events: EventData[]) => void,
+  filters?: {
+    category?: string
+    status?: string
+    limit?: number
+  },
+) => {
+  let q = query(collection(db, "events"), orderBy("createdAt", "desc"))
+
+  if (filters?.category) {
+    q = query(q, where("category", "==", filters.category))
+  }
+
+  if (filters?.status) {
+    q = query(q, where("status", "==", filters.status))
+  }
+
+  if (filters?.limit) {
+    q = query(q, limit(filters.limit))
+  }
+
+  return onSnapshot(q, (querySnapshot) => {
+    const events: EventData[] = []
+    querySnapshot.forEach((doc) => {
+      events.push({ id: doc.id, ...doc.data() } as EventData)
+    })
+    callback(events)
+  })
+}
+
+export const incrementEventViews = async (eventId: string) => {
+  try {
+    const eventRef = doc(db, "events", eventId)
+    await updateDoc(eventRef, {
+      views: increment(1),
+    })
   } catch (error) {
     console.error("Error incrementing views:", error)
-    throw error
   }
 }
 
-// Update Event Likes
-export const incrementEventLikes = async (eventId: string): Promise<void> => {
+export const toggleEventLike = async (eventId: string, increment: boolean) => {
   try {
-    const eventRef = doc(eventsCollection, eventId)
-    const eventSnap = await getDoc(eventRef)
-
-    if (eventSnap.exists()) {
-      const currentLikes = eventSnap.data().likes || 0
-      await updateDoc(eventRef, {
-        likes: currentLikes + 1,
-      })
-    }
+    const eventRef = doc(db, "events", eventId)
+    await updateDoc(eventRef, {
+      likes: increment ? increment(1) : increment(-1),
+    })
   } catch (error) {
-    console.error("Error incrementing likes:", error)
-    throw error
+    console.error("Error toggling like:", error)
   }
 }
